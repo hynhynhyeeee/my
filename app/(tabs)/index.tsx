@@ -17,7 +17,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
 import SearchHeader from '../../components/SearchHeader';
 import FloatingAIButton from '../../components/FloatingAIButton';
-import { getAllReviews, getLikedReviewIds, checkIsLiked, toggleReviewLike, Review } from '@/services/reviewService';
+import { getAllReviews, getLikedReviewIds, Review } from '@/services/reviewService';
 import { getAiResultsLocally } from '@/services/aiMatching';
 
 const { width } = Dimensions.get('window');
@@ -34,6 +34,73 @@ const freeConsultEvents = [
   { id: 2, hospitalName: 'B클리닉', hospitalId: 2, procedure: '코성형', originalPrice: '3,500,000원', discount: '첫상담 무료', colors: ['#9C27B0', '#BA68C8'] },
   { id: 3, hospitalName: 'C성형외과', hospitalId: 3, procedure: '필러/보톡스', originalPrice: '500,000원', discount: '첫상담 무료', colors: ['#FF9933', '#FFB84D'] },
 ];
+
+const HOSPITAL_DOCTOR_MAP: { [key: string]: { hospital: string; doctor: string } } = {
+  'geunah': { hospital: '그날 성형외과', doctor: '유경한' },
+  'nana': { hospital: '나나 성형외과', doctor: '권효정' },
+  'nosanghun': { hospital: '노상훈 성형외과', doctor: '김주현' },
+  'dress': { hospital: '드레스 성형외과', doctor: '홍수정' },
+  'dday': { hospital: '디데이 성형외과의원', doctor: '추성철' },
+  'dday_lee': { hospital: '디데이 성형외과의원', doctor: '이주홍' },
+  'dm': { hospital: '디엠 성형외과', doctor: '이주홍' },
+  'ruby': { hospital: '루비 성형외과', doctor: '이승준' },
+  'ruby_hur': { hospital: '루비 성형외과', doctor: '허정우' },
+  'luho': { hospital: '루호 성형외과', doctor: '김준영' },
+  'luho_park': { hospital: '루호 성형외과', doctor: '박일' },
+  'luho_wi': { hospital: '루호 성형외과', doctor: '위성재' },
+  'marble': { hospital: '마블 성형외과', doctor: '서용훈' },
+  'made': { hospital: '메이드영 성형외과', doctor: '박병찬' },
+  'made_jang': { hospital: '메이드영 성형외과', doctor: '장남' },
+  'baba': { hospital: '바바 성형외과', doctor: '김상일' },
+  'vee': { hospital: '브이 성형외과', doctor: '윤홍상' },
+  'sisun': { hospital: '시선 성형외과', doctor: '신재훈' },
+  'almond': { hospital: '아몬드 성형외과', doctor: '강승현' },
+  'almond_kang': { hospital: '아몬드 성형외과', doctor: '강승호' },
+  'almond_kim': { hospital: '아몬드 성형외과', doctor: '김상헌' },
+  'id': { hospital: '아이디 성형외과', doctor: '최요안' },
+  'eyecontact': { hospital: '아이컨텍 성형외과', doctor: '이석현' },
+  'ab': { hospital: '에이비 성형외과', doctor: '김승민' },
+  'ab_bae': { hospital: '에이비 성형외과', doctor: '배인호' },
+  'atop': { hospital: '에이탑 성형외과', doctor: '손승태' },
+  'atop_oh': { hospital: '에이탑 성형외과', doctor: '오화영' },
+  'eight': { hospital: '에이트 성형외과', doctor: '박민우' },
+  'onair': { hospital: '온에어 성형외과', doctor: '강혜원' },
+  'onair_kang': { hospital: '온에어 성형외과', doctor: '강혜원' },
+  'ucanbe': { hospital: '유캔비 성형외과', doctor: '권준성' },
+  'eunkasoo': { hospital: '은하수 성형외과', doctor: '전희창' },
+  'eunkasoo_jun': { hospital: '은하수 성형외과', doctor: '전희창' },
+  'jai': { hospital: '차이 성형외과', doctor: '최승호' },
+  'clash': { hospital: '클래시 성형외과', doctor: '박성훈' },
+  'pop': { hospital: '팝 성형외과', doctor: '류안영' },
+  'hannaive': { hospital: '한나이브 성형외과', doctor: '손형빈' },
+  'hoolryung': { hospital: '훌륭 성형외과', doctor: '김효동' },
+  'hit': { hospital: '히트 성형외과', doctor: '미상' },
+};
+
+const PROCEDURE_MAP: { [key: string]: string } = {
+  'mono': '쌍꺼풀 (매몰)',
+  'inline': '쌍꺼풀 (인라인)',
+  'outline': '쌍꺼풀 (아웃라인)',
+  'incision': '쌍꺼풀 (절개)',
+  'natural': '자연유착',
+  'partial': '부분절개',
+};
+
+const extractFolderName = (url: string): string => {
+  const match = url.match(/reviews\/([^\/]+)\//);
+  return match ? match[1] : '';
+};
+
+const getHospitalDoctorInfo = (folderName: string) => {
+  return HOSPITAL_DOCTOR_MAP[folderName] || {
+    hospital: folderName.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+    doctor: '대표원장'
+  };
+};
+
+const formatProcedure = (label: string): string => {
+  return PROCEDURE_MAP[label] || label;
+};
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -53,38 +120,38 @@ export default function HomeScreen() {
 
   const loadData = async () => {
     try {
-      // 🔥 1. AI 매칭 결과가 있으면 그걸 사용 (유사도 높은 순)
       const aiResults = await getAiResultsLocally();
       
       if (aiResults && aiResults.length > 0) {
         console.log('✅ AI 매칭 결과 사용:', aiResults.length, '개');
         
-        // AI 결과를 Review 형태로 변환 (유사도 포함!)
         const aiReviews = aiResults
           .filter((match: any) => match.before_url && match.after_url)
-          .map((match: any, index: number) => ({
-            id: `ai_${index}`,
-            hospital_name: match.hospital,
-            before_img: match.before_url,
-            after_img: match.after_url,
-            similarity: match.similarity, // 🔥 유사도 포함!
-            procedures: match.label,
-            likeCount: 0,
-            viewCount: 0,
-          }));
+          .map((match: any, index: number) => {
+            const folderName = extractFolderName(match.before_url);
+            const info = getHospitalDoctorInfo(folderName);
+            
+            return {
+              id: `ai_${index}`,
+              before_img: match.before_url,
+              after_img: match.after_url,
+              hospital_name: info.hospital,
+              doctor_name: info.doctor,
+              procedures: formatProcedure(match.label),
+              similarity: match.similarity,
+              likeCount: 0,
+              viewCount: 0,
+            };
+          });
         
-        // 유사도 높은 순으로 이미 정렬되어 있지만, 한 번 더 확인
         aiReviews.sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
-        
-        setRecommendedReviews(aiReviews.slice(0, 10)); // 상위 10개만
+        setRecommendedReviews(aiReviews.slice(0, 10));
       } else {
-        console.log('⚠️ AI 결과 없음, 기본 추천 사용');
-        // AI 결과가 없으면 일반 후기 10개
-        const allData = await getAllReviews(10);
-        setRecommendedReviews(allData.slice(0, 5));
+        console.log('⚠️ AI 결과 없음, 기본 후기 표시');
+        const defaultReviews = await getAllReviews(10);
+        setRecommendedReviews(defaultReviews);
       }
 
-      // 2. 저장한 후기
       const likedIds = await getLikedReviewIds();
       if (likedIds.length > 0) {
         const ampleData = await getAllReviews(100);
@@ -106,10 +173,78 @@ export default function HomeScreen() {
     await loadData();
   };
 
+  const fixFirebaseUrl = (url: string) => {
+    if (!url) return '';
+    if (!url.includes('/o/')) return url;
+
+    try {
+      const parts = url.split('/o/');
+      const baseUrl = 'https://firebasestorage.googleapis.com/v0/b/beauty-inside-665c4.firebasestorage.app/o/';
+      
+      let pathWithQuery = parts[1];
+      let filePath = pathWithQuery;
+      let queryParams = '';
+      
+      if (pathWithQuery.includes('?')) {
+        const queryParts = pathWithQuery.split('?');
+        filePath = queryParts[0];
+        queryParams = '?' + queryParts[1];
+      }
+
+      const encodedPath = encodeURIComponent(decodeURIComponent(filePath));
+      return `${baseUrl}${encodedPath}${queryParams}`;
+      
+    } catch (e) {
+      return url;
+    }
+  };
+
+  // 🔥 핵심 수정!
   const handleReviewPress = (reviewId: string | number) => {
+    const review = recommendedReviews.find(r => r.id === reviewId) || 
+                   savedReviews.find(r => r.id === reviewId);
+    
+    if (!review) {
+      router.push({
+        pathname: '/reviews/detail',
+        params: { id: String(reviewId) }
+      });
+      return;
+    }
+    
+    const beforeUrl = fixFirebaseUrl(review.beforeImageUrl || review.before_img || '');
+    const afterUrl = fixFirebaseUrl(review.afterImageUrl || review.after_img || '');
+    
+    console.log('🔗 상세 페이지로 이동:', {
+      id: review.id,
+      hospital: review.hospitalName || review.hospital_name,
+    });
+    
     router.push({
       pathname: '/reviews/detail',
-      params: { id: reviewId }
+      params: {
+        id: String(review.id || ''),
+        beforeUrl: beforeUrl,
+        afterUrl: afterUrl,
+        hospitalName: review.hospitalName || review.hospital_name || '',
+        doctorName: review.doctor_name || '',
+        procedures: review.procedures || '',
+        cost: review.cost || '',
+        specialty: (review as any).doctor_badge || '',
+        surgeryDate: (review as any).surgery_date || '',
+        doctorStyle: (review as any).doctor_style || '',
+        naturalScore: String((review as any).doctor_natural_pct || 0),
+        gorgeousScore: String((review as any).doctor_fancy_pct || 0),
+        doctorKeywords: (review as any).doctor_best_keywords || '',
+        hospitalKeywords: (review as any).hospital_best_keywords || '',
+        totalReviewsDoctor: String((review as any).doctor_total_reviews || 0),
+        totalReviewsHospital: String((review as any).hospital_total_reviews || 0),
+        originalReview: (review as any).review_text || '',
+        summary: (review as any).review_summary || '',
+        likeCount: String(review.likeCount || 0),
+        viewCount: String(review.viewCount || 0),
+        similarity: String(review.similarity || 0),
+      }
     });
   };
 
@@ -118,8 +253,6 @@ export default function HomeScreen() {
     const afterUrl = review.afterImageUrl || review.after_img;
     const hospitalName = review.hospitalName || review.hospital_name;
     const procedures = review.procedures;
-    
-    const fixUrl = (url: string) => url ? url.replace('firebasestoragee', 'firebasestorage').replace('..app', '.app') : '';
 
     if (!beforeUrl || !afterUrl) return null;
     
@@ -131,22 +264,29 @@ export default function HomeScreen() {
       >
         <View style={styles.beforeAfterContainer}>
           <View style={styles.imageWrapper}>
-            <Image source={{ uri: fixUrl(beforeUrl) }} style={styles.halfImage} resizeMode="cover" />
+            <Image 
+              source={{ uri: fixFirebaseUrl(beforeUrl) }} 
+              style={styles.halfImage} 
+              resizeMode="cover"
+            />
             <View style={styles.imageLabel}>
               <Text style={styles.imageLabelText}>BEFORE</Text>
             </View>
           </View>
           <View style={styles.imageWrapper}>
-            <Image source={{ uri: fixUrl(afterUrl) }} style={styles.halfImage} resizeMode="cover" />
+            <Image 
+              source={{ uri: fixFirebaseUrl(afterUrl) }} 
+              style={styles.halfImage} 
+              resizeMode="cover"
+            />
             <View style={styles.imageLabel}>
               <Text style={styles.imageLabelText}>AFTER</Text>
             </View>
             
-            {/* 🔥 유사도 뱃지 추가! */}
             {review.similarity !== undefined && review.similarity > 0 && (
-              <View style={styles.similarityBadge}>
+              <View style={styles.similarityBadgeOnImage}>
                 <Icon name="auto-awesome" size={12} color="#FF6B9D" />
-                <Text style={styles.similarityText}>
+                <Text style={styles.similarityBadgeTextOnImage}>
                   {Math.round(review.similarity * 100)}%
                 </Text>
               </View>
@@ -238,24 +378,24 @@ export default function HomeScreen() {
       >
         <SearchHeader />
         
-        {/* 🔥 AI 추천 후기 (유사도 높은 순!) */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Icon name="auto-awesome" size={20} color="#FF6B9D" />
-            <Text style={styles.sectionTitle}>당신이 좋아할 만한 후기</Text>
-            <TouchableOpacity style={styles.seeAllButton} onPress={() => router.push('/(tabs)/recommended')}>
-              <Text style={styles.seeAllText}>전체보기</Text>
-              <Icon name="chevron-right" size={16} color="#999" />
-            </TouchableOpacity>
+        {recommendedReviews.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Icon name="auto-awesome" size={20} color="#FF6B9D" />
+              <Text style={styles.sectionTitle}>당신이 좋아할 만한 후기</Text>
+              <TouchableOpacity style={styles.seeAllButton} onPress={() => router.push('/(tabs)/recommended')}>
+                <Text style={styles.seeAllText}>전체보기</Text>
+                <Icon name="chevron-right" size={16} color="#999" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+              {recommendedReviews.map((review, index) => (
+                <BeforeAfterReviewCard key={review.id || index} review={review} />
+              ))}
+            </ScrollView>
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-            {recommendedReviews.map((review, index) => (
-              <BeforeAfterReviewCard key={review.id || index} review={review} />
-            ))}
-          </ScrollView>
-        </View>
+        )}
 
-        {/* 첫상담 무료 */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Icon name="card-giftcard" size={20} color="#FF6B9D" />
@@ -272,7 +412,6 @@ export default function HomeScreen() {
           </ScrollView>
         </View>
 
-        {/* 특별 이벤트 */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Icon name="stars" size={20} color="#FF6B9D" />
@@ -299,7 +438,6 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* 저장한 후기 */}
         {savedReviews.length > 0 && (
           <View style={[styles.section, { marginBottom: 30 }]}>
             <View style={styles.sectionHeader}>
@@ -340,9 +478,7 @@ const styles = StyleSheet.create({
   halfImage: { width: '100%', aspectRatio: 0.75, borderRadius: 12, backgroundColor: '#f0f0f0' },
   imageLabel: { position: 'absolute', top: 8, left: 8, backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   imageLabelText: { color: 'white', fontSize: 10, fontWeight: '600' },
-  
-  // 🔥 유사도 뱃지 스타일 추가!
-  similarityBadge: {
+  similarityBadgeOnImage: {
     position: 'absolute',
     top: 8,
     right: 8,
@@ -353,17 +489,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 },
-      android: { elevation: 3 }
-    })
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  similarityText: {
+  similarityBadgeTextOnImage: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#FF6B9D'
+    color: '#FF6B9D',
   },
-  
   reviewInfo: { padding: 16, paddingTop: 8 },
   hospitalName: { fontSize: 14, color: '#666', marginBottom: 4 },
   procedureText: { fontSize: 16, fontWeight: '600', color: '#333', marginBottom: 8 },

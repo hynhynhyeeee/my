@@ -15,12 +15,21 @@ export const ReviewCard: React.FC<Props> = ({ review, onPress, onToggleLike }) =
   const [isLiked, setIsLiked] = useState(false);
   const [likes, setLikes] = useState(review.likeCount || 0);
   const [isHidden, setIsHidden] = useState(false);
+  const [beforeError, setBeforeError] = useState(false);
+  const [afterError, setAfterError] = useState(false);
 
   useEffect(() => {
     if (review.id) {
       checkIsLiked(String(review.id)).then(setIsLiked);
     }
   }, [review.id]);
+
+  useEffect(() => {
+    if (beforeError || afterError) {
+      console.log(`❌ 이미지 에러 발생 - 카드 숨김:`, review.id);
+      setIsHidden(true);
+    }
+  }, [beforeError, afterError]);
 
   const handleToggle = async () => {
     if (!review.id) return;
@@ -36,7 +45,6 @@ export const ReviewCard: React.FC<Props> = ({ review, onPress, onToggleLike }) =
     await toggleReviewLike(String(review.id));
   };
 
-  // 🔥 Firebase URL 완벽 처리 (한글, 슬래시 등)
   const fixFirebaseUrl = (url: string) => {
     if (!url) return '';
     if (!url.includes('/o/')) return url;
@@ -64,36 +72,63 @@ export const ReviewCard: React.FC<Props> = ({ review, onPress, onToggleLike }) =
     }
   };
 
-  const beforeUrl = fixFirebaseUrl(review.beforeImageUrl || review.before_img || (review as any).beforeUrl || (review as any).before_url || '');
-  const afterUrl = fixFirebaseUrl(review.afterImageUrl || review.after_img || (review as any).afterUrl || (review as any).after_url || '');
+  const beforeUrl = fixFirebaseUrl(
+    review.beforeImageUrl || 
+    review.before_img || 
+    (review as any).beforeUrl || 
+    (review as any).before_url || 
+    ''
+  );
+  
+  const afterUrl = fixFirebaseUrl(
+    review.afterImageUrl || 
+    review.after_img || 
+    (review as any).afterUrl || 
+    (review as any).after_url || 
+    ''
+  );
 
-  console.log('🖼️ ReviewCard 렌더링:', {
-    id: review.id,
-    beforeUrl: beforeUrl ? '있음' : '없음',
-    afterUrl: afterUrl ? '있음' : '없음'
-  });
-
-  // URL이 없거나 숨김 상태면 렌더링 안 함
   if (isHidden || !beforeUrl || !afterUrl) {
-    console.log('❌ 카드 숨김:', review.id);
     return null;
   }
 
   const handlePress = () => {
-    if (onPress) onPress();
-    else {
-      const isAi = String(review.id).startsWith('ai_');
+    if (onPress) {
+      onPress();
+    } else {
+      console.log('🔗 상세 페이지로 이동:', {
+        id: review.id,
+        hospital: review.hospitalName || review.hospital_name,
+      });
+      
+      // 🔥 params 이름 수정!
       router.push({
         pathname: '/reviews/detail',
-        params: { id: isAi ? '' : review.id, ...review } as any
+        params: {
+          id: String(review.id || ''),
+          beforeUrl: beforeUrl,
+          afterUrl: afterUrl,
+          hospitalName: review.hospitalName || review.hospital_name || '',
+          doctorName: review.doctor_name || '',
+          procedures: review.procedures || '',
+          cost: review.cost || '',
+          specialty: (review as any).doctor_badge || '',
+          surgeryDate: (review as any).surgery_date || '',
+          doctorStyle: (review as any).doctor_style || '',
+          naturalScore: String((review as any).doctor_natural_pct || 0),
+          gorgeousScore: String((review as any).doctor_fancy_pct || 0),
+          doctorKeywords: (review as any).doctor_best_keywords || '',
+          hospitalKeywords: (review as any).hospital_best_keywords || '',
+          totalReviewsDoctor: String((review as any).doctor_total_reviews || 0),
+          totalReviewsHospital: String((review as any).hospital_total_reviews || 0),
+          originalReview: (review as any).review_text || '',
+          summary: (review as any).review_summary || '',
+          likeCount: String(likes || 0),
+          viewCount: String(review.viewCount || 0),
+          similarity: String(review.similarity || 0),
+        }
       });
     }
-  };
-
-  // 이미지 로드 실패 시 카드 숨김
-  const handleImageError = (label: string) => {
-    console.log(`🗑️ ${label} 이미지 로드 실패 -> 카드 숨김:`, review.id);
-    setIsHidden(true);
   };
 
   return (
@@ -104,8 +139,10 @@ export const ReviewCard: React.FC<Props> = ({ review, onPress, onToggleLike }) =
             source={{ uri: beforeUrl }} 
             style={styles.image} 
             resizeMode="cover"
-            onError={() => handleImageError('Before')}
-            onLoad={() => console.log('✅ Before 이미지 로드 성공:', review.id)}
+            onError={() => {
+              console.log('❌ Before 이미지 로드 실패:', review.id);
+              setBeforeError(true);
+            }}
           />
           <View style={styles.labelBadge}>
             <Text style={styles.labelText}>BEFORE</Text>
@@ -117,8 +154,10 @@ export const ReviewCard: React.FC<Props> = ({ review, onPress, onToggleLike }) =
             source={{ uri: afterUrl }} 
             style={styles.image} 
             resizeMode="cover"
-            onError={() => handleImageError('After')}
-            onLoad={() => console.log('✅ After 이미지 로드 성공:', review.id)}
+            onError={() => {
+              console.log('❌ After 이미지 로드 실패:', review.id);
+              setAfterError(true);
+            }}
           />
           <View style={[styles.labelBadge, { backgroundColor: '#4CAF50' }]}>
             <Text style={styles.labelText}>AFTER</Text>

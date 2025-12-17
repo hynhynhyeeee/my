@@ -34,29 +34,76 @@ export default function ReviewDetailScreen() {
   };
 
   useEffect(() => {
+    console.log('📖 상세 페이지 params:', {
+      id: params.id,
+      before_img: params.before_img ? '있음' : '없음',
+      after_img: params.after_img ? '있음' : '없음',
+      hospital_name: params.hospital_name,
+      doctor_name: params.doctor_name,
+    });
     loadReview();
   }, []);
 
-  const fixUrl = (url: string): string => {
-    if (!url) return '';
-    return url.replace('firebasestoragee.app', 'firebasestorage.app').replace('..app', '.app');
+  // 🔥 강력한 Firebase URL 인코딩 함수
+  const fixFirebaseUrl = (url: string): string => {
+    if (!url) {
+      console.log('⚠️ URL이 비어있음');
+      return '';
+    }
+    
+    // 이미 완전한 URL이면 그대로 반환
+    if (!url.includes('/o/')) {
+      console.log('✅ 완전한 URL:', url.substring(0, 50));
+      return url;
+    }
+
+    try {
+      const parts = url.split('/o/');
+      const baseUrl = 'https://firebasestorage.googleapis.com/v0/b/beauty-inside-665c4.firebasestorage.app/o/';
+      
+      let pathWithQuery = parts[1];
+      let filePath = pathWithQuery;
+      let queryParams = '';
+      
+      if (pathWithQuery.includes('?')) {
+        const queryParts = pathWithQuery.split('?');
+        filePath = queryParts[0];
+        queryParams = '?' + queryParts[1];
+      }
+
+      const encodedPath = encodeURIComponent(decodeURIComponent(filePath));
+      const finalUrl = `${baseUrl}${encodedPath}${queryParams}`;
+      
+      console.log('🔧 URL 변환:', url.substring(0, 50), '→', finalUrl.substring(0, 50));
+      return finalUrl;
+      
+    } catch (e) {
+      console.log('❌ URL 인코딩 실패:', e);
+      return url;
+    }
   };
 
   const loadReview = async () => {
     try {
       const reviewId = String(params.id || '');
-      if (reviewId) checkIsLiked(reviewId).then(setIsLiked);
+      if (reviewId && !reviewId.startsWith('ai_')) {
+        checkIsLiked(reviewId).then(setIsLiked);
+      }
 
       let reviewData: any = null;
 
       // 🔥 Firestore에서 가져오기
       if (params.id && !String(params.id).startsWith('ai_')) {
         const data = await getReviewById(params.id as string);
-        if (data) reviewData = { ...data, id: data.id };
+        if (data) {
+          reviewData = { ...data, id: data.id };
+          console.log('✅ Firestore 데이터 로드');
+        }
       } 
       
-      // 🔥 params에서 직접 가져오기 (AI 매칭 결과 등)
-      if (!reviewData && (params.before_img || params.beforeUrl || params.id)) {
+      // 🔥 params에서 직접 가져오기 (AI 매칭 결과)
+      if (!reviewData && params.id) {
+        console.log('✅ params에서 데이터 로드');
         reviewData = {
           id: String(params.id || ''),
           before_img: params.before_img || params.beforeUrl,
@@ -65,38 +112,59 @@ export default function ReviewDetailScreen() {
           doctor_name: params.doctor_name || params.doctorName,
           procedures: params.procedures,
           cost: params.cost,
-          review_text: params.review_text || params.summary,
-          similarity: params.similarity, // 🔥 유사도 추가!
-          doctor_total_reviews: params.doctor_total_reviews || Math.floor(Math.random() * 100),
-          hospital_total_reviews: params.hospital_total_reviews || Math.floor(Math.random() * 500),
-          doctor_best_keywords: params.doctor_best_keywords || '절개 눈매교정,앞트임,자연유착',
-          hospital_best_keywords: params.hospital_best_keywords || '눈 재수술,코 수술,리프팅',
+          review_text: params.review_text || params.summary || '수술 후 매우 만족스럽습니다.',
+          similarity: params.similarity,
+          doctor_style: params.doctor_style || '화려함',
+          doctor_natural_pct: params.doctor_natural_pct || 25,
+          doctor_fancy_pct: params.doctor_fancy_pct || 75,
+          doctor_total_reviews: params.doctor_total_reviews || 17,
+          hospital_total_reviews: params.hospital_total_reviews || 150,
+          doctor_best_keywords: params.doctor_best_keywords || '절개,눈매교정,트임',
+          hospital_best_keywords: params.hospital_best_keywords || '눈성형,재수술,코성형',
+          surgery_date: params.surgery_date || '2024-11-05',
+          likeCount: params.likeCount || 0,
+          viewCount: params.viewCount || 0,
         };
       }
 
       if (reviewData) {
+        const beforeRaw = reviewData.before_img || reviewData.beforeImageUrl || '';
+        const afterRaw = reviewData.after_img || reviewData.afterImageUrl || '';
+        
+        console.log('📦 원본 URL:', {
+          before: beforeRaw.substring(0, 80),
+          after: afterRaw.substring(0, 80)
+        });
+
         const normalized = {
           id: reviewData.id,
-          beforeUrl: fixUrl(reviewData.before_img || reviewData.beforeImageUrl),
-          afterUrl: fixUrl(reviewData.after_img || reviewData.afterImageUrl),
+          beforeUrl: fixFirebaseUrl(beforeRaw),
+          afterUrl: fixFirebaseUrl(afterRaw),
           hospitalName: reviewData.hospital_name || reviewData.hospitalName || '병원 정보 없음',
           doctorName: reviewData.doctor_name || '대표원장',
           procedures: reviewData.procedures || '',
           cost: reviewData.cost || '가격 정보 없음',
           specialty: reviewData.doctor_badge || '',
-          originalReview: reviewData.review_text || reviewData.review_summary || '',
+          originalReview: reviewData.review_text || reviewData.review_summary || '수술 후 매우 만족스럽습니다.',
           surgeryDate: reviewData.surgery_date || '',
-          doctorStyle: reviewData.doctor_style || '',
-          naturalScore: reviewData.doctor_natural_pct,
-          gorgeousScore: reviewData.doctor_fancy_pct,
+          doctorStyle: reviewData.doctor_style || '화려함',
+          naturalScore: reviewData.doctor_natural_pct || 25,
+          gorgeousScore: reviewData.doctor_fancy_pct || 75,
           doctorKeywords: reviewData.doctor_best_keywords || '절개,눈매교정,트임', 
           hospitalKeywords: reviewData.hospital_best_keywords || '눈성형,재수술,코성형',
-          totalReviewsDoctor: reviewData.doctor_total_reviews || 0,
-          totalReviewsHospital: reviewData.hospital_total_reviews || 0,
+          totalReviewsDoctor: reviewData.doctor_total_reviews || 17,
+          totalReviewsHospital: reviewData.hospital_total_reviews || 150,
           likeCount: Number(reviewData.likeCount || 0),
           viewCount: Number(reviewData.viewCount || 0),
-          similarity: reviewData.similarity, // 🔥 유사도 전달!
+          similarity: reviewData.similarity,
         };
+
+        console.log('✅ 정규화된 데이터:', {
+          beforeUrl: normalized.beforeUrl ? '있음' : '없음',
+          afterUrl: normalized.afterUrl ? '있음' : '없음',
+          hospital: normalized.hospitalName,
+          doctor: normalized.doctorName,
+        });
 
         setReview(normalized);
         setReviewText(normalized.originalReview);
@@ -131,6 +199,26 @@ export default function ReviewDetailScreen() {
   if (loading) return <View style={styles.center}><ActivityIndicator size="large" color="#FF6B9D" /></View>;
   if (!review) return <View style={styles.center}><Text>정보를 불러올 수 없습니다.</Text></View>;
 
+  // 🔥 이미지 URL 검증
+  if (!review.beforeUrl || !review.afterUrl) {
+    console.error('❌ 이미지 URL 없음:', {
+      before: review.beforeUrl,
+      after: review.afterUrl
+    });
+    return (
+      <View style={styles.center}>
+        <Icon name="broken-image" size={60} color="#999" />
+        <Text style={styles.errorText}>이미지를 불러올 수 없습니다</Text>
+        <TouchableOpacity 
+          style={styles.backBtn}
+          onPress={() => router.back()}
+        >
+          <Text style={styles.backBtnText}>돌아가기</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
@@ -148,14 +236,25 @@ export default function ReviewDetailScreen() {
         {/* 1. 이미지 */}
         <View style={styles.imageContainer}>
           <View style={styles.halfImage}>
-            <Image source={{ uri: review.beforeUrl }} style={styles.img} resizeMode="cover" />
+            <Image 
+              source={{ uri: review.beforeUrl }} 
+              style={styles.img} 
+              resizeMode="cover"
+              onError={(e) => console.log('❌ Before 이미지 에러:', e.nativeEvent.error)}
+              onLoad={() => console.log('✅ Before 이미지 로드 성공')}
+            />
             <View style={styles.label}><Text style={styles.labelText}>BEFORE</Text></View>
           </View>
           <View style={styles.halfImage}>
-            <Image source={{ uri: review.afterUrl }} style={styles.img} resizeMode="cover" />
+            <Image 
+              source={{ uri: review.afterUrl }} 
+              style={styles.img} 
+              resizeMode="cover"
+              onError={(e) => console.log('❌ After 이미지 에러:', e.nativeEvent.error)}
+              onLoad={() => console.log('✅ After 이미지 로드 성공')}
+            />
             <View style={[styles.label, {backgroundColor:'#4CAF50'}]}><Text style={styles.labelText}>AFTER</Text></View>
             
-            {/* 🔥 유사도 뱃지 추가! */}
             {review.similarity !== undefined && review.similarity > 0 && (
               <View style={styles.similarityBadge}>
                 <Icon name="auto-awesome" size={14} color="#FF6B9D" />
@@ -233,7 +332,7 @@ export default function ReviewDetailScreen() {
 
         <View style={styles.thickDivider} />
 
-        {/* 5. 의사 프로필 카드 (Best Top 3 포함) */}
+        {/* 5. 의사 프로필 카드 */}
         <TouchableOpacity 
           style={styles.profileCard}
           onPress={() => router.push({ pathname: '/reviews/doctor', params: { doctorName: review.doctorName, hospitalName: review.hospitalName } })}
@@ -266,7 +365,7 @@ export default function ReviewDetailScreen() {
 
         <View style={styles.thickDivider} />
 
-        {/* 6. 병원 프로필 카드 (통계 포함) */}
+        {/* 6. 병원 프로필 카드 */}
         <TouchableOpacity 
           style={styles.profileCard}
           onPress={() => router.push({ pathname: '/reviews/hospital', params: { hospitalName: review.hospitalName } })}
@@ -334,6 +433,9 @@ export default function ReviewDetailScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'white' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  errorText: { marginTop: 16, fontSize: 16, color: '#999', marginBottom: 24 },
+  backBtn: { backgroundColor: '#FF6B9D', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 24 },
+  backBtnText: { color: 'white', fontSize: 15, fontWeight: '600' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: Platform.OS==='ios'?60:20, paddingBottom: 16, borderBottomWidth: 1, borderColor: '#eee' },
   headerTitle: { fontSize: 18, fontWeight: 'bold' },
   iconBtn: { padding: 4 },
@@ -344,7 +446,6 @@ const styles = StyleSheet.create({
   label: { position: 'absolute', top: 10, left: 10, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
   labelText: { color: 'white', fontSize: 11, fontWeight: 'bold' },
   
-  // 🔥 유사도 뱃지 스타일 추가!
   similarityBadge: {
     position: 'absolute',
     top: 10,
