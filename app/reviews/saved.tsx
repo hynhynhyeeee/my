@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,297 +7,139 @@ import {
   StyleSheet,
   Platform,
   StatusBar,
-  Dimensions,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import SearchHeader from '../../components/SearchHeader';
-
-const { width } = Dimensions.get('window');
-
-type FilterType = 'likes' | 'views' | 'similarity';
+import FloatingAIButton from '../../components/FloatingAIButton';
+import { ReviewCard } from '@/components/ReviewCard';
+import { getAllReviews, getLikedReviewIds, Review } from '@/services/reviewService';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 
 export default function SavedReviewsScreen() {
   const router = useRouter();
-  const [selectedFilter, setSelectedFilter] = useState<FilterType>('likes');
+  const [savedReviews, setSavedReviews] = useState<Review[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const reviews = [
-    {
-      id: 101,
-      category: '눈',
-      hospital: 'D성형외과',
-      procedure: '쌍꺼풀',
-      likes: 2341,
-      views: 15234,
-      similarity: 95,
-    },
-    {
-      id: 102,
-      category: '눈',
-      hospital: 'E클리닉',
-      procedure: '앞트임',
-      likes: 1523,
-      views: 10234,
-      similarity: 92,
-    },
-    {
-      id: 103,
-      category: '코',
-      hospital: 'F성형외과',
-      procedure: '코끝성형',
-      likes: 987,
-      views: 7654,
-      similarity: 88,
-    },
-  ];
+  // 화면 포커스될 때마다 새로고침
+  useFocusEffect(
+    useCallback(() => {
+      loadSavedReviews();
+    }, [])
+  );
 
-  const sortedReviews = [...reviews].sort((a, b) => {
-    if (selectedFilter === 'likes') return b.likes - a.likes;
-    if (selectedFilter === 'views') return b.views - a.views;
-    return b.similarity - a.similarity;
-  });
+  const loadSavedReviews = async () => {
+    try {
+      setLoading(true);
+      
+      const likedIds = await getLikedReviewIds();
+      console.log('[Saved] Liked IDs:', likedIds);
 
-  const toggleHeart = (reviewId: number) => {
-    console.log('Toggle heart:', reviewId);
+      if (!likedIds || likedIds.length === 0) {
+        setSavedReviews([]);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+
+      const allReviews = await getAllReviews(1000);
+      const myReviews = allReviews.filter(review => {
+        return review.id && likedIds.includes(String(review.id));
+      });
+      
+      console.log('[Saved] Display Count:', myReviews.length);
+      setSavedReviews(myReviews);
+
+    } catch (error) {
+      console.error('[Saved] Load Error:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   };
 
-  const viewReview = (reviewId: number) => {
-    router.push({
-      pathname: '/reviews/detail',
-      params: { id: reviewId }
-    });
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadSavedReviews();
   };
+
+  if (loading && !refreshing) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="dark-content" />
+        <SearchHeader />
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="large" color="#FF6B9D" />
+          <Text style={styles.loadingText}>보관함을 불러오는 중...</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
       <SearchHeader />
 
-      <ScrollView style={styles.scrollContent} contentContainerStyle={styles.scrollContentContainer}>
-        {/* 뒤로가기 제거 */}
-        
-        {/* 헤더 */}
+      <ScrollView 
+        style={styles.scrollContent} 
+        contentContainerStyle={styles.scrollContentContainer}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>💾 저장한 후기</Text>
-          <Text style={styles.headerSubtitle}>총 {reviews.length}개의 후기</Text>
+          <View style={styles.headerTop}>
+            <View style={styles.headerTitleContainer}>
+              <Icon name="bookmark" size={24} color="#FF6B9D" />
+              <Text style={styles.headerTitle}>저장한 후기</Text>
+            </View>
+          </View>
+          <Text style={styles.headerSubtitle}>총 {savedReviews.length}개의 후기</Text>
         </View>
 
-        {/* 정렬 필터 */}
-        <View style={styles.sortFilterSection}>
-          <TouchableOpacity
-            style={[styles.sortButton, selectedFilter === 'likes' && styles.sortButtonActive]}
-            onPress={() => setSelectedFilter('likes')}
-          >
-            <Text style={[styles.sortButtonText, selectedFilter === 'likes' && styles.sortButtonTextActive]}>
-              찜 많은순
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.sortButton, selectedFilter === 'views' && styles.sortButtonActive]}
-            onPress={() => setSelectedFilter('views')}
-          >
-            <Text style={[styles.sortButtonText, selectedFilter === 'views' && styles.sortButtonTextActive]}>
-              조회수순
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.sortButton, selectedFilter === 'similarity' && styles.sortButtonActive]}
-            onPress={() => setSelectedFilter('similarity')}
-          >
-            <Text style={[styles.sortButtonText, selectedFilter === 'similarity' && styles.sortButtonTextActive]}>
-              유사도순
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* 후기 리스트 */}
         <View style={styles.reviewList}>
-          {sortedReviews.map((review) => (
-            <TouchableOpacity 
-              key={review.id} 
-              style={styles.reviewCard} 
-              activeOpacity={0.9}
-              onPress={() => viewReview(review.id)}
-            >
-              <View style={styles.reviewImages}>
-                <View style={styles.reviewImageHalf}>
-                  <Text style={styles.reviewImageLabel}>BEFORE</Text>
-                </View>
-                <View style={[styles.reviewImageHalf, styles.reviewImageAfter]}>
-                  <Text style={styles.reviewImageLabel}>AFTER</Text>
-                </View>
-              </View>
+          {savedReviews.length > 0 ? (
+            savedReviews.map((review) => (
+              <ReviewCard key={review.id} review={review} />
+            ))
+          ) : (
+            <View style={styles.emptyState}>
+              <Icon name="bookmark-border" size={80} color="#ddd" />
+              <Text style={styles.emptyText}>아직 저장한 후기가 없습니다.</Text>
+              <Text style={styles.emptySubText}>마음에 드는 후기에 하트를 눌러보세요!</Text>
               
-              {/* 유사도 배지 - 왼쪽 고정 */}
-              <View style={styles.similarityBadge}>
-                <Text style={styles.similarityBadgeText}>유사도 {review.similarity}%</Text>
-              </View>
-              
-              <View style={styles.reviewCardInfo}>
-                <View style={styles.reviewCardHeader}>
-                  <Text style={styles.reviewCardCategory}>{review.category}</Text>
-                  <TouchableOpacity onPress={() => toggleHeart(review.id)}>
-                    <Text style={styles.heartIcon}>❤️</Text>
-                  </TouchableOpacity>
-                </View>
-                <Text style={styles.reviewCardProcedure}>{review.procedure}</Text>
-                <Text style={styles.reviewCardHospital}>{review.hospital}</Text>
-                <View style={styles.reviewCardStats}>
-                  <Text style={styles.reviewCardStat}>❤️ {review.likes}</Text>
-                  <Text style={styles.reviewCardStat}>👁️ {review.views}</Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-          ))}
+              <TouchableOpacity 
+                style={styles.exploreButton}
+                onPress={() => router.push('/(tabs)/recommended')}
+              >
+                <Text style={styles.exploreButtonText}>후기 둘러보기</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </ScrollView>
+      <FloatingAIButton />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f8f9fa',
-  },
-  scrollContent: {
-    flex: 1,
-    marginTop: Platform.OS === 'ios' ? 100:90,
-  },
-  scrollContentContainer: {
-    paddingBottom: 100,
-  },
-  header: {
-    padding: 20,
-    backgroundColor: 'white',
-    marginBottom: 8,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#333',
-    marginBottom: 8,
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: '#999',
-  },
-  sortFilterSection: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 8,
-    backgroundColor: 'white',
-    marginBottom: 8,
-  },
-  sortButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 16,
-    backgroundColor: '#f0f0f0',
-  },
-  sortButtonActive: {
-    backgroundColor: '#333',
-  },
-  sortButtonText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#666',
-  },
-  sortButtonTextActive: {
-    color: 'white',
-  },
-  reviewList: {
-    padding: 16,
-    gap: 16,
-  },
-  reviewCard: {
-    backgroundColor: 'white',
-    borderRadius: 16,
-    overflow: 'hidden',
-    position: 'relative',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
-  },
-  reviewImages: {
-    flexDirection: 'row',
-    gap: 8,
-    padding: 12,
-  },
-  reviewImageHalf: {
-    flex: 1,
-    aspectRatio: 0.75,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  reviewImageAfter: {
-    backgroundColor: '#e8f5e9',
-  },
-  reviewImageLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#999',
-  },
-  similarityBadge: {
-    position: 'absolute',
-    top: 20,
-    left: 20,
-    backgroundColor: '#333',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    zIndex: 10,
-  },
-  similarityBadgeText: {
-    color: 'white',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  reviewCardInfo: {
-    padding: 16,
-    paddingTop: 8,
-  },
-  reviewCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  reviewCardCategory: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#666',
-  },
-  heartIcon: {
-    fontSize: 20,
-  },
-  reviewCardProcedure: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 4,
-  },
-  reviewCardHospital: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 8,
-  },
-  reviewCardStats: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  reviewCardStat: {
-    fontSize: 13,
-    color: '#999',
-  },
+  container: { flex: 1, backgroundColor: '#f8f9fa' },
+  scrollContent: { flex: 1, marginTop: 0 },
+  scrollContentContainer: { paddingBottom: 100 },
+  centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  loadingText: { marginTop: 16, color: '#999' },
+  header: { padding: 20, backgroundColor: 'white', marginBottom: 8 },
+  headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  headerTitleContainer: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerTitle: { fontSize: 24, fontWeight: '700', color: '#333' },
+  headerSubtitle: { fontSize: 14, color: '#999' },
+  reviewList: { padding: 16, gap: 16 },
+  emptyState: { padding: 60, alignItems: 'center', justifyContent: 'center', marginTop: 40 },
+  emptyText: { fontSize: 18, fontWeight: 'bold', color: '#333', marginTop: 16 },
+  emptySubText: { fontSize: 14, color: '#999', marginTop: 8, marginBottom: 24 },
+  exploreButton: { backgroundColor: '#FF6B9D', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 24 },
+  exploreButtonText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
 });

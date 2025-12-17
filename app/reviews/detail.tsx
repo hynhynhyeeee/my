@@ -1,507 +1,393 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
+  Image,
+  ActivityIndicator,
   Platform,
   StatusBar,
-  Dimensions,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import SearchHeader from '../../components/SearchHeader';
+import MapView, { Marker } from 'react-native-maps';
 import TranslateButton from '../../components/TranslateButton';
-import FloatingAIButton from '../../components/FloatingAIButton';
-
-const { width } = Dimensions.get('window');
+import Icon from 'react-native-vector-icons/MaterialIcons';
+import { getReviewById, toggleReviewLike, checkIsLiked } from '@/services/reviewService';
 
 export default function ReviewDetailScreen() {
   const params = useLocalSearchParams();
   const router = useRouter();
-  const reviewId = params.id;
+  
+  const [loading, setLoading] = useState(true);
+  const [review, setReview] = useState<any>(null);
+  const [reviewText, setReviewText] = useState('');
+  
+  // 좋아요 상태
+  const [isLiked, setIsLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(0);
 
-  const [reviewText, setReviewText] = useState('20대 중반 여성입니다. 자연스러운 인아웃 라인을 원했고, 눈매교정도 함께 받았어요. 결과에 매우 만족합니다!');
-  const [hospitalName, setHospitalName] = useState('A성형외과');
-  const [hospitalAddress, setHospitalAddress] = useState('서울시 강남구 역삼동 123-45');
-  const [procedure, setProcedure] = useState('쌍꺼풀 + 앞트임');
-  const [hashtags, setHashtags] = useState(['자연스러운', '인아웃', '앞트임', '눈매교정']);
-
-  const review = {
-    id: reviewId,
-    category: '눈',
-    hospitalId: 1,
-    doctor: '김지수',
-    likes: 2341,
-    views: 15234,
-    similarity: 95,
-    date: '2024.11.15',
-    hospitalInfo: {
-      phone: '02-1234-5678',
-    },
+  const hospitalLocation = {
+    latitude: 37.4979,
+    longitude: 127.0276,
+    address: '서울시 강남구 역삼동 123-45',
   };
 
-  const handleTranslate = (translatedText: string, language: string) => {
-    setReviewText(translatedText);
-    
-    // 더미 번역 (실제로는 API 사용)
-    if (language === 'en') {
-      setHospitalName('A Plastic Surgery');
-      setHospitalAddress('123-45 Yeoksam-dong, Gangnam-gu, Seoul');
-      setProcedure('Double Eyelid + Epicanthoplasty');
-      setHashtags(['Natural', 'In-out', 'Epicanthoplasty', 'Eye Correction']);
-    } else if (language === 'zh') {
-      setHospitalName('A整形外科');
-      setHospitalAddress('首尔市江南区驿三洞123-45');
-      setProcedure('双眼皮 + 开眼角');
-      setHashtags(['自然', '内外双', '开眼角', '眼型矫正']);
-    } else if (language === 'ja') {
-      setHospitalName('A美容外科');
-      setHospitalAddress('ソウル市江南区駅三洞123-45');
-      setProcedure('二重まぶた + 目頭切開');
-      setHashtags(['自然な', 'インアウト', '目頭切開', '目つき矯正']);
-    } else {
-      setHospitalName('A성형외과');
-      setHospitalAddress('서울시 강남구 역삼동 123-45');
-      setProcedure('쌍꺼풀 + 앞트임');
-      setHashtags(['자연스러운', '인아웃', '앞트임', '눈매교정']);
+  useEffect(() => {
+    loadReview();
+  }, []);
+
+  const fixUrl = (url: string): string => {
+    if (!url) return '';
+    return url.replace('firebasestoragee.app', 'firebasestorage.app').replace('..app', '.app');
+  };
+
+  const loadReview = async () => {
+    try {
+      const reviewId = String(params.id || '');
+      if (reviewId) checkIsLiked(reviewId).then(setIsLiked);
+
+      let reviewData: any = null;
+
+      if (params.id && !String(params.id).startsWith('ai_')) {
+        const data = await getReviewById(params.id as string);
+        if (data) reviewData = { ...data, id: data.id };
+      } 
+      
+      if (!reviewData && (params.beforeUrl || params.id)) {
+        reviewData = {
+          id: String(params.id || ''),
+          beforeImageUrl: params.beforeUrl,
+          afterImageUrl: params.afterUrl,
+          hospitalName: params.hospitalName,
+          doctorName: params.doctorName,
+          procedures: params.procedures,
+          cost: params.cost,
+          review_text: params.summary,
+          doctor_total_reviews: Math.floor(Math.random() * 100),
+          hospital_total_reviews: Math.floor(Math.random() * 500),
+          doctor_best_keywords: '절개 눈매교정,앞트임,자연유착',
+          hospital_best_keywords: '눈 재수술,코 수술,리프팅',
+        };
+      }
+
+      if (reviewData) {
+        const normalized = {
+          id: reviewData.id,
+          beforeUrl: fixUrl(reviewData.before_img || reviewData.beforeImageUrl),
+          afterUrl: fixUrl(reviewData.after_img || reviewData.afterImageUrl),
+          hospitalName: reviewData.hospital_name || reviewData.hospitalName || '병원 정보 없음',
+          doctorName: reviewData.doctor_name || '대표원장',
+          procedures: reviewData.procedures || '',
+          cost: reviewData.cost || '가격 정보 없음',
+          specialty: reviewData.doctor_badge || '',
+          originalReview: reviewData.review_text || reviewData.review_summary || '',
+          surgeryDate: reviewData.surgery_date || '',
+          doctorStyle: reviewData.doctor_style || '',
+          naturalScore: reviewData.doctor_natural_pct,
+          gorgeousScore: reviewData.doctor_fancy_pct,
+          doctorKeywords: reviewData.doctor_best_keywords || '절개,눈매교정,트임', 
+          hospitalKeywords: reviewData.hospital_best_keywords || '눈성형,재수술,코성형',
+          totalReviewsDoctor: reviewData.doctor_total_reviews || 0,
+          totalReviewsHospital: reviewData.hospital_total_reviews || 0,
+          likeCount: Number(reviewData.likeCount || 0),
+          viewCount: Number(reviewData.viewCount || 0),
+        };
+
+        setReview(normalized);
+        setReviewText(normalized.originalReview);
+        setLikeCount(normalized.likeCount);
+      }
+    } catch (error) {
+      console.error('[Detail] Error:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const goToDoctorReviews = () => {
+  const handleToggleLike = async () => {
+    if (!review?.id) return;
+    const newStatus = !isLiked;
+    setIsLiked(newStatus);
+    setLikeCount(p => newStatus ? p + 1 : p - 1);
+    await toggleReviewLike(review.id);
+  };
+
+  const handleChatPress = () => {
+    if (!review?.hospitalName) return;
+    const chatId = `${review.hospitalName}_${review.doctorName}`.replace(/\s+/g, '');
     router.push({
-      pathname: '/reviews/doctor',
-      params: { 
-        doctorName: review.doctor,
-        hospitalName: hospitalName,
-      }
+      pathname: '/chat/hospital',
+      params: { chatId, hospitalName: review.hospitalName, doctorName: review.doctorName }
     });
   };
 
-  const goToHospitalInfo = () => {
-    router.push({
-      pathname: '/reviews/hospital',
-      params: { 
-        hospitalId: review.hospitalId,
-        hospitalName: hospitalName,
-      }
-    });
-  };
+  const parseKeywords = (str: string) => String(str).split(',').map(k => k.trim()).filter(k => k).slice(0, 3);
 
-  const goToBooking = () => {
-    router.push({
-      pathname: '/booking/hospital',
-      params: {
-        hospitalId: review.hospitalId,
-        hospitalName: hospitalName,
-        hospitalAddress: hospitalAddress,
-        hospitalPhone: review.hospitalInfo.phone,
-      }
-    });
-  };
-
-  const toggleHeart = () => {
-    console.log('Toggle heart');
-  };
+  if (loading) return <View style={styles.center}><ActivityIndicator size="large" color="#FF6B9D" /></View>;
+  if (!review) return <View style={styles.center}><Text>정보를 불러올 수 없습니다.</Text></View>;
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
-      <SearchHeader />
-
-      <ScrollView 
-        style={styles.scrollContent} 
-        contentContainerStyle={styles.scrollContentContainer}
-        showsVerticalScrollIndicator={false}
-      >
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Text style={styles.backButtonText}>← 뒤로</Text>
+      
+      {/* 헤더 */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}>
+          <Icon name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
+        <Text style={styles.headerTitle}>후기 상세</Text>
+        <View style={{width:40}} />
+      </View>
 
-        {/* 배너 1: 사진 + 시술정보 + 후기 */}
-        <View style={styles.mainCard}>
-          <View style={styles.imageSection}>
-            <View style={styles.imagePair}>
-              <View style={styles.imageContainer}>
-                <View style={styles.imagePlaceholder}>
-                  <Text style={styles.imageLabel}>BEFORE</Text>
-                </View>
-              </View>
-              <View style={styles.imageContainer}>
-                <View style={[styles.imagePlaceholder, styles.afterImage]}>
-                  <Text style={styles.imageLabel}>AFTER</Text>
-                </View>
-              </View>
-            </View>
-
-            <View style={styles.similarityBadge}>
-              <Text style={styles.similarityText}>유사도 {review.similarity}%</Text>
-            </View>
+      <ScrollView contentContainerStyle={{ paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
+        {/* 1. 이미지 */}
+        <View style={styles.imageContainer}>
+          <View style={styles.halfImage}>
+            <Image source={{ uri: review.beforeUrl }} style={styles.img} resizeMode="cover" />
+            <View style={styles.label}><Text style={styles.labelText}>BEFORE</Text></View>
           </View>
-
-          <View style={styles.infoSection}>
-            <View style={styles.infoHeader}>
-              <View>
-                <Text style={styles.categoryText}>{review.category}</Text>
-                <Text style={styles.procedureText}>{procedure}</Text>
-              </View>
-              <TouchableOpacity onPress={toggleHeart}>
-                <Text style={styles.heartIcon}>🤍</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.statsRow}>
-              <Text style={styles.statText}>❤️ {review.likes}</Text>
-              <Text style={styles.statText}>👁️ {review.views}</Text>
-              <Text style={styles.dateText}>{review.date}</Text>
-            </View>
-          </View>
-
-          <View style={styles.reviewSection}>
-            {/* 번역 버튼 */}
-            <View style={styles.reviewHeader}>
-              <Text style={styles.reviewLabel}>후기</Text>
-              <TranslateButton 
-                originalText={reviewText} 
-                onTranslate={handleTranslate}
-              />
-            </View>
-            
-            <Text style={styles.reviewText}>{reviewText}</Text>
-            
-            <View style={styles.hashtagContainer}>
-              {hashtags.map((tag, index) => (
-                <Text key={index} style={styles.hashtag}>#{tag}</Text>
-              ))}
-            </View>
+          <View style={styles.halfImage}>
+            <Image source={{ uri: review.afterUrl }} style={styles.img} resizeMode="cover" />
+            <View style={[styles.label, {backgroundColor:'#4CAF50'}]}><Text style={styles.labelText}>AFTER</Text></View>
           </View>
         </View>
-        {review.similarity >= 90 && (
-          <View style={styles.aiRecommendBadge}>
-            <Text style={styles.aiRecommendText}>AI 추천!</Text>
+
+        <View style={styles.contentContainer}>
+          {/* 2. 시술 정보 & 좋아요 */}
+          <View style={styles.titleRow}>
+            <View style={{flex:1}}>
+              <Text style={styles.procedures}>{review.procedures}</Text>
+              <Text style={styles.hospitalName}>{review.hospitalName}</Text>
+              
+              <View style={styles.doctorInfoRow}>
+                <Icon name="person" size={14} color="#666" style={{marginRight: 4}} />
+                <Text style={styles.doctorName}>집도의: {review.doctorName}</Text>
+              </View>
+            </View>
+            <TouchableOpacity onPress={handleToggleLike}>
+              <Icon name={isLiked ? "favorite" : "favorite-border"} size={28} color="#FF6B9D" />
+            </TouchableOpacity>
           </View>
-        )}
 
-        {/* 배너 2: 병원정보 + 지도 + 원장 */}
-        <View style={styles.hospitalCard}>
-          <TouchableOpacity onPress={goToHospitalInfo} style={styles.hospitalSection}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>🏥 병원 정보</Text>
-              <Text style={styles.arrowText}>→</Text>
-            </View>
-            <Text style={styles.hospitalName}>{hospitalName}</Text>
-            <Text style={styles.hospitalAddress}>{hospitalAddress}</Text>
-            <Text style={styles.hospitalPhone}>📞 {review.hospitalInfo.phone}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity onPress={goToBooking} style={styles.mapSection}>
-            <View style={styles.mapPlaceholder}>
-              <Text style={styles.mapIcon}>🗺️</Text>
-              <Text style={styles.mapText}>지도 보기 • 예약하기</Text>
-            </View>
-          </TouchableOpacity>
+          <View style={styles.statsRow}>
+            <View style={styles.statItem}><Icon name="favorite" size={14} color="#FF6B9D" /><Text style={styles.statText}>{likeCount}</Text></View>
+            <View style={styles.statItem}><Icon name="visibility" size={14} color="#999" /><Text style={styles.statText}>{review.viewCount}</Text></View>
+            <Text style={styles.dateText}>{review.surgeryDate}</Text>
+          </View>
 
           <View style={styles.divider} />
 
-          <TouchableOpacity onPress={goToDoctorReviews} style={styles.doctorSection}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>👨‍⚕️ 담당 원장</Text>
-              <Text style={styles.arrowText}>→</Text>
-            </View>
-            <View style={styles.doctorInfo}>
-              <View style={styles.doctorAvatar}>
-                <Text style={styles.doctorAvatarText}>👨‍⚕️</Text>
+          {/* 비용 */}
+          <View style={styles.rowBetween}>
+            <Text style={styles.label}>비용</Text>
+            <Text style={styles.costText}>{review.cost}</Text>
+          </View>
+
+          {/* 3. 의사 스타일 (그래프) */}
+          {(review.doctorStyle || review.naturalScore !== undefined) && (
+            <View style={styles.styleBox}>
+              <View style={styles.sectionHeader}>
+                <Icon name="face" size={18} color="#333" />
+                <Text style={styles.sectionTitle}>의사 스타일 분석</Text>
               </View>
-              <View style={styles.doctorDetails}>
-                <Text style={styles.doctorName}>{review.doctor} 원장</Text>
-                <Text style={styles.doctorSubtext}>다른 후기 보기</Text>
+              {review.doctorStyle && <View style={styles.styleTag}><Text style={styles.styleTagText}>{review.doctorStyle}</Text></View>}
+              <View style={styles.graphRow}>
+                <Text style={styles.graphLabel}>자연스러움</Text>
+                <View style={styles.graphBarBg}><View style={[styles.graphBarFill, {width: `${review.naturalScore || 50}%`, backgroundColor: '#4CAF50'}]} /></View>
+                <Text style={styles.graphValue}>{review.naturalScore}%</Text>
+              </View>
+              <View style={styles.graphRow}>
+                <Text style={styles.graphLabel}>화려함</Text>
+                <View style={styles.graphBarBg}><View style={[styles.graphBarFill, {width: `${review.gorgeousScore || 50}%`, backgroundColor: '#FF6B9D'}]} /></View>
+                <Text style={styles.graphValue}>{review.gorgeousScore}%</Text>
               </View>
             </View>
-          </TouchableOpacity>
+          )}
+
+          <View style={styles.divider} />
+
+          {/* 4. 후기 내용 */}
+          <View>
+            <View style={styles.rowBetween}>
+              <Text style={styles.sectionTitle}>후기</Text>
+              <TranslateButton originalText={reviewText} onTranslate={(t) => setReviewText(t)} />
+            </View>
+            <Text style={styles.reviewText}>{reviewText}</Text>
+          </View>
         </View>
+
+        <View style={styles.thickDivider} />
+
+        {/* 5. 의사 프로필 카드 (Best Top 3 포함) */}
+        <TouchableOpacity 
+          style={styles.profileCard}
+          onPress={() => router.push({ pathname: '/reviews/doctor', params: { doctorName: review.doctorName, hospitalName: review.hospitalName } })}
+        >
+          <View style={styles.cardTop}>
+            {/* 🟦 의사 아이콘 (Person) */}
+            <View style={styles.doctorIconBg}>
+                <Icon name="person" size={30} color="#667eea" />
+            </View>
+            <View style={{flex:1, marginLeft: 12}}>
+              <Text style={styles.cardName}>{review.doctorName} 원장</Text>
+              <Text style={styles.cardSub}>총 {review.totalReviewsDoctor}개의 후기 보유</Text>
+            </View>
+            <Icon name="chevron-right" size={24} color="#ccc" />
+          </View>
+          
+          {/* 🏆 Best Keywords (의사) -> Icon: emoji-events */}
+          <View style={styles.bestKeywords}>
+            <View style={styles.bestLabelRow}>
+                <Icon name="emoji-events" size={16} color="#FF9800" style={{ marginRight: 4 }} />
+                <Text style={styles.bestLabel}>Best Top 3:</Text>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {parseKeywords(review.doctorKeywords).map((k, i) => (
+                <View key={i} style={styles.bestBadge}>
+                  <Text style={styles.bestBadgeText}>{k}</Text>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+
+        <View style={styles.thickDivider} />
+
+        {/* 6. 병원 프로필 카드 (통계 포함) */}
+        <TouchableOpacity 
+          style={styles.profileCard}
+          onPress={() => router.push({ pathname: '/reviews/hospital', params: { hospitalName: review.hospitalName } })}
+        >
+          <View style={styles.cardTop}>
+            {/* 🏥 병원 아이콘 (Local Hospital) */}
+            <View style={styles.hospitalIconBg}>
+                <Icon name="local-hospital" size={26} color="white" />
+            </View>
+            <View style={{flex:1, marginLeft: 12}}>
+              <Text style={styles.cardName}>{review.hospitalName}</Text>
+              <Text style={styles.cardSub}>이 병원 후기 {review.totalReviewsHospital}개</Text>
+            </View>
+            <Icon name="chevron-right" size={24} color="#ccc" />
+          </View>
+
+          {/* 📊 병원 통계 -> Icon: bar-chart */}
+          <View style={styles.bestKeywords}>
+            <View style={styles.bestLabelRow}>
+                <Icon name="bar-chart" size={16} color="#1976D2" style={{ marginRight: 4 }} />
+                <Text style={styles.bestLabel}>많이 하는 시술:</Text>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {parseKeywords(review.hospitalKeywords).map((k, i) => (
+                <View key={i} style={[styles.bestBadge, {backgroundColor: '#E3F2FD'}]}>
+                  <Text style={[styles.bestBadgeText, {color: '#1976D2'}]}>{k}</Text>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+
+        {/* 7. 지도 */}
+        <View style={styles.contentContainer}>
+          <View style={[styles.sectionHeader, { marginBottom: 10 }]}>
+            <Icon name="place" size={18} color="#333" />
+            <Text style={styles.sectionTitle}>병원 위치</Text>
+          </View>
+          <MapView
+            style={{height: 150, borderRadius: 12}}
+            initialRegion={{...hospitalLocation, latitudeDelta:0.005, longitudeDelta:0.005}}
+          >
+            <Marker coordinate={hospitalLocation} title={review.hospitalName} />
+          </MapView>
+          <Text style={styles.address}>{hospitalLocation.address}</Text>
+        </View>
+
       </ScrollView>
 
-      {/* 플로팅 AI 버튼 */}
-      <FloatingAIButton />
+      {/* 하단 버튼 */}
+      <View style={styles.bottomBar}>
+        <TouchableOpacity style={styles.chatBtn} onPress={handleChatPress}>
+          <Icon name="chat-bubble-outline" size={20} color="#333" />
+          <Text style={styles.chatBtnText}>문의하기</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={styles.bookBtn}
+          onPress={() => router.push({ pathname: '/booking/hospital', params: { hospitalName: review.hospitalName } })}
+        >
+          <Text style={styles.bookBtnText}>상담 예약하기</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f8f9fa',
-  },
-  scrollContent: {
-    flex: 1,
-    marginTop: Platform.OS === 'ios' ? 75 : 65,
-  },
-  scrollContentContainer: {
-    paddingBottom: 100,
-  },
-  backButton: {
-    padding: 16,
-  },
-  backButtonText: {
-    fontSize: 16,
-    color: '#333',
-    fontWeight: '500',
-  },
+  container: { flex: 1, backgroundColor: 'white' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: Platform.OS==='ios'?60:20, paddingBottom: 16, borderBottomWidth: 1, borderColor: '#eee' },
+  headerTitle: { fontSize: 18, fontWeight: 'bold' },
+  iconBtn: { padding: 4 },
+  
+  imageContainer: { flexDirection: 'row', height: 250, padding: 16, gap: 8 },
+  halfImage: { flex: 1, borderRadius: 12, overflow: 'hidden' },
+  img: { width: '100%', height: '100%', backgroundColor: '#eee' },
+  label: { position: 'absolute', top: 10, left: 10, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
+  labelText: { color: 'white', fontSize: 11, fontWeight: 'bold' },
 
-  mainCard: {
-    backgroundColor: 'white',
-    marginHorizontal: 16,
-    marginBottom: 12,
-    borderRadius: 16,
-    overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
-  },
-  imageSection: {
-    padding: 12,
-    position: 'relative',
-  },
-  imagePair: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  imageContainer: {
-    flex: 1,
-  },
-  imagePlaceholder: {
-    width: '100%',
-    aspectRatio: 0.75,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  afterImage: {
-    backgroundColor: '#e8f5e9',
-  },
-  imageLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#999',
-  },
-  similarityBadge: {
-    position: 'absolute',
-    top: 20,
-    left: 20,
-    backgroundColor: '#333',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  aiRecommendBadge: {
-  position: 'absolute',
-  top: 50,
-  left: 20,
-  backgroundColor: '#FF69B4',
-  paddingHorizontal: 12,
-  paddingVertical: 6,
-  borderRadius: 12,
-  zIndex: 10,
-},
-aiRecommendText: {
-  color: 'white',
-  fontSize: 11,
-  fontWeight: '600',
-},
-  similarityText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  infoSection: {
-    padding: 20,
-    paddingTop: 8,
-  },
-  infoHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  categoryText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#666',
-    marginBottom: 4,
-  },
-  procedureText: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#333',
-  },
-  heartIcon: {
-    fontSize: 28,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    gap: 16,
-    alignItems: 'center',
-  },
-  statText: {
-    fontSize: 14,
-    color: '#666',
-  },
-  dateText: {
-    fontSize: 13,
-    color: '#999',
-    marginLeft: 'auto',
-  },
-  reviewSection: {
-    padding: 20,
-    paddingTop: 0,
-  },
-  reviewHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  reviewLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-  },
-  reviewText: {
-    fontSize: 15,
-    color: '#333',
-    lineHeight: 24,
-    marginBottom: 16,
-  },
-  hashtagContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  hashtag: {
-    fontSize: 14,
-    color: '#666',
-    backgroundColor: '#f5f5f5',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
+  contentContainer: { padding: 20 },
+  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  procedures: { fontSize: 13, color: '#666', fontWeight: '600', marginBottom: 4 },
+  hospitalName: { fontSize: 20, fontWeight: 'bold', color: '#333', marginBottom: 4 },
+  doctorInfoRow: { flexDirection: 'row', alignItems: 'center' },
+  doctorName: { fontSize: 15, color: '#555' },
+  
+  statsRow: { flexDirection: 'row', marginTop: 12, alignItems: 'center', gap: 12 },
+  statItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  statText: { fontSize: 13, color: '#999' },
+  dateText: { fontSize: 13, color: '#999', marginLeft: 'auto' },
 
-  hospitalCard: {
-    backgroundColor: 'white',
-    marginHorizontal: 16,
-    marginBottom: 12,
-    borderRadius: 16,
-    overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
-  },
-  hospitalSection: {
-    padding: 20,
-  },
-  mapSection: {
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-  },
-  mapPlaceholder: {
-    height: 150,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mapIcon: {
-    fontSize: 40,
-    marginBottom: 8,
-  },
-  mapText: {
-    fontSize: 16,
-    color: '#666',
-    fontWeight: '600',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#f0f0f0',
-    marginHorizontal: 20,
-  },
-  doctorSection: {
-    padding: 20,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-  },
-  arrowText: {
-    fontSize: 20,
-    color: '#333',
-  },
-  hospitalName: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
-  },
-  hospitalAddress: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 4,
-  },
-  hospitalPhone: {
-    fontSize: 14,
-    color: '#333',
-    fontWeight: '500',
-  },
-  doctorInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  doctorAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#f0f0f0',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  doctorAvatarText: {
-    fontSize: 24,
-  },
-  doctorDetails: {
-    flex: 1,
-  },
-  doctorName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 2,
-  },
-  doctorSubtext: {
-    fontSize: 13,
-    color: '#666',
-  },
+  divider: { height: 1, backgroundColor: '#eee', marginVertical: 20 },
+  thickDivider: { height: 8, backgroundColor: '#f8f9fa' },
+  
+  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  label: { fontSize: 15, color: '#666' },
+  costText: { fontSize: 16, fontWeight: 'bold', color: '#FF6B9D' },
+  
+  styleBox: { backgroundColor: '#F8F9FA', padding: 16, borderRadius: 12 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 6 },
+  sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#333' },
+  styleTag: { alignSelf: 'flex-start', backgroundColor: '#E8F5E9', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginBottom: 12 },
+  styleTagText: { color: '#2E7D32', fontSize: 13, fontWeight: '600' },
+  graphRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  graphLabel: { width: 70, fontSize: 13, color: '#555' },
+  graphBarBg: { flex: 1, height: 6, backgroundColor: '#ddd', borderRadius: 3, marginHorizontal: 8 },
+  graphBarFill: { height: '100%', borderRadius: 3 },
+  graphValue: { width: 30, fontSize: 12, color: '#666', textAlign: 'right' },
+
+  reviewText: { fontSize: 15, lineHeight: 24, color: '#333' },
+
+  profileCard: { padding: 20, borderBottomWidth: 1, borderColor: '#f0f0f0' },
+  cardTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  
+  // 아이콘 배경 스타일
+  doctorIconBg: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#E8EAF6', justifyContent: 'center', alignItems: 'center' },
+  hospitalIconBg: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#FF6B9D', justifyContent: 'center', alignItems: 'center' },
+  
+  cardName: { fontSize: 16, fontWeight: 'bold', color: '#333' },
+  cardSub: { fontSize: 13, color: '#888', marginTop: 2 },
+  
+  bestKeywords: { marginTop: 4 },
+  bestLabelRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  bestLabel: { fontSize: 13, fontWeight: '600', color: '#333' },
+  bestBadge: { backgroundColor: '#FFF3E0', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginRight: 6 },
+  bestBadgeText: { fontSize: 12, color: '#EF6C00', fontWeight: '600' },
+
+  address: { fontSize: 13, color: '#666', marginTop: 8, textAlign: 'center' },
+
+  bottomBar: { flexDirection: 'row', padding: 16, borderTopWidth: 1, borderColor: '#eee' },
+  chatBtn: { flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: '#ddd', borderRadius: 12, paddingVertical: 14, marginRight: 8 },
+  chatBtnText: { fontWeight: '600', color: '#333' },
+  bookBtn: { flex: 2, backgroundColor: '#FF6B9D', justifyContent: 'center', alignItems: 'center', borderRadius: 12 },
+  bookBtnText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
 });

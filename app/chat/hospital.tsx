@@ -1,131 +1,100 @@
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  KeyboardAvoidingView,
-  StyleSheet,
-  Platform,
-  StatusBar,
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, KeyboardAvoidingView, Platform, StatusBar
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import SearchHeader from '../../components/SearchHeader';
-
-interface Message {
-  id: number;
-  text: string;
-  sender: 'user' | 'hospital';
-  timestamp: string;
-}
+import Icon from 'react-native-vector-icons/MaterialIcons';
+import { sendMessage, subscribeToChat, Message } from '@/services/chatService';
 
 export default function HospitalChatScreen() {
   const params = useLocalSearchParams();
   const router = useRouter();
-  
-  const hospitalName = params.hospitalName as string;
-  const hospitalId = params.hospitalId;
 
-  const [message, setMessage] = useState('');
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 1,
-      text: `안녕하세요! ${hospitalName}입니다. 무엇을 도와드릴까요?`,
-      sender: 'hospital',
-      timestamp: '09:00',
-    }
-  ]);
+  // Params (Detail에서 넘겨준 값들)
+  const chatId = params.chatId as string;
+  const hospitalName = params.hospitalName as string || '병원';
+  const doctorName = params.doctorName as string || '상담원';
 
-  const sendMessage = () => {
-    if (message.trim() === '') return;
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [inputText, setInputText] = useState('');
+  const flatListRef = useRef<FlatList>(null);
 
-    const newMessage: Message = {
-      id: messages.length + 1,
-      text: message,
-      sender: 'user',
-      timestamp: new Date().toLocaleTimeString('ko-KR', { 
-        hour: '2-digit', 
-        minute: '2-digit' 
-      }),
-    };
+  useEffect(() => {
+    if (!chatId) return;
+    const unsubscribe = subscribeToChat(chatId, (msgs) => {
+      setMessages(msgs);
+    });
+    return () => unsubscribe();
+  }, [chatId]);
 
-    setMessages([...messages, newMessage]);
-    setMessage('');
+  const handleSend = async () => {
+    if (!inputText.trim()) return;
+    const text = inputText;
+    setInputText('');
+    // 병원명과 의사명도 같이 저장
+    await sendMessage(chatId, text, hospitalName, doctorName);
+  };
 
-    // 자동 응답 (시뮬레이션)
-    setTimeout(() => {
-      const autoReply: Message = {
-        id: messages.length + 2,
-        text: '문의 주셔서 감사합니다. 곧 상담사가 연결됩니다.',
-        sender: 'hospital',
-        timestamp: new Date().toLocaleTimeString('ko-KR', { 
-          hour: '2-digit', 
-          minute: '2-digit' 
-        }),
-      };
-      setMessages(prev => [...prev, autoReply]);
-    }, 1000);
+  const goToHospitalDetail = () => {
+    router.push({
+      pathname: '/reviews/hospital',
+      params: { hospitalName: hospitalName }
+    });
   };
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
-      <SearchHeader />
+      
+      {/* 상단 헤더 */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <Icon name="arrow-back" size={24} color="#333" />
+        </TouchableOpacity>
+        
+        <TouchableOpacity style={styles.headerContent} onPress={goToHospitalDetail}>
+          <Text style={styles.headerTitle}>{hospitalName}</Text>
+          <View style={styles.headerSubInfo}>
+            <View style={styles.onlineBadge} />
+            <Text style={styles.headerSubtitle}>{doctorName} • 상담 가능</Text>
+            <Icon name="chevron-right" size={16} color="#999" />
+          </View>
+        </TouchableOpacity>
+      </View>
 
-      <KeyboardAvoidingView 
-        style={styles.keyboardAvoid}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 75 : 65}
-      >
-        {/* 헤더 */}
-        <View style={styles.chatHeader}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <Text style={styles.backButtonText}>← </Text>
-          </TouchableOpacity>
-          <Text style={styles.chatHeaderTitle}>{hospitalName}</Text>
-        </View>
+      <FlatList
+        ref={flatListRef}
+        data={messages}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <View style={[styles.messageBubble, item.sender === 'user' ? styles.myMessage : styles.otherMessage]}>
+            <Text style={[styles.messageText, item.sender === 'user' ? styles.myMessageText : styles.otherMessageText]}>
+              {item.text}
+            </Text>
+            <Text style={styles.timeText}>{item.timestamp}</Text>
+          </View>
+        )}
+        contentContainerStyle={styles.listContent}
+        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+      />
 
-        {/* 메시지 목록 */}
-        <ScrollView 
-          style={styles.messageList}
-          contentContainerStyle={styles.messageListContent}
-        >
-          {messages.map((msg) => (
-            <View 
-              key={msg.id} 
-              style={[
-                styles.messageBubble,
-                msg.sender === 'user' ? styles.userBubble : styles.hospitalBubble
-              ]}
-            >
-              <Text style={[
-                styles.messageText,
-                msg.sender === 'user' && styles.userMessageText
-              ]}>
-                {msg.text}
-              </Text>
-              <Text style={[
-                styles.messageTime,
-                msg.sender === 'user' && styles.userMessageTime
-              ]}>
-                {msg.timestamp}
-              </Text>
-            </View>
-          ))}
-        </ScrollView>
-
-        {/* 입력창 */}
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={styles.inputContainer}>
+          <TouchableOpacity style={styles.attachButton}><Icon name="add" size={24} color="#999" /></TouchableOpacity>
           <TextInput
             style={styles.input}
-            placeholder="메시지를 입력하세요..."
-            value={message}
-            onChangeText={setMessage}
-            multiline
+            value={inputText}
+            onChangeText={setInputText}
+            placeholder="메시지를 입력하세요"
+            returnKeyType="send"
+            onSubmitEditing={handleSend}
           />
-          <TouchableOpacity style={styles.sendButton} onPress={sendMessage}>
-            <Text style={styles.sendButtonText}>전송</Text>
+          <TouchableOpacity 
+            style={[styles.sendButton, inputText.trim().length > 0 && styles.sendButtonActive]} 
+            onPress={handleSend}
+            disabled={!inputText.trim()}
+          >
+            <Icon name="send" size={20} color="white" />
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -134,98 +103,25 @@ export default function HospitalChatScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f8f9fa',
-  },
-  keyboardAvoid: {
-    flex: 1,
-    marginTop: Platform.OS === 'ios' ? 75 : 65,
-  },
-  chatHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'white',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  backButton: {
-    marginRight: 8,
-  },
-  backButtonText: {
-    fontSize: 20,
-    color: '#333',
-  },
-  chatHeaderTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-  },
-  messageList: {
-    flex: 1,
-    backgroundColor: '#f8f9fa',
-  },
-  messageListContent: {
-    padding: 16,
-    paddingBottom: 100,
-  },
-  messageBubble: {
-    maxWidth: '75%',
-    padding: 12,
-    borderRadius: 16,
-    marginBottom: 12,
-  },
-  userBubble: {
-    alignSelf: 'flex-end',
-    backgroundColor: '#333',
-  },
-  hospitalBubble: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'white',
-  },
-  messageText: {
-    fontSize: 15,
-    color: '#333',
-    marginBottom: 4,
-  },
-  userMessageText: {
-    color: 'white',
-  },
-  messageTime: {
-    fontSize: 11,
-    color: '#999',
-  },
-  userMessageTime: {
-    color: '#ccc',
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    padding: 12,
-    backgroundColor: 'white',
-    borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
-    alignItems: 'center',
-  },
-  input: {
-    flex: 1,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    fontSize: 15,
-    maxHeight: 100,
-  },
-  sendButton: {
-    marginLeft: 8,
-    backgroundColor: '#333',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
-  },
-  sendButtonText: {
-    color: 'white',
-    fontSize: 15,
-    fontWeight: '600',
-  },
+  container: { flex: 1, backgroundColor: '#f0f2f5' },
+  header: { flexDirection: 'row', alignItems: 'center', paddingTop: Platform.OS === 'ios' ? 60 : 20, paddingBottom: 16, paddingHorizontal: 16, backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#eee' },
+  backButton: { padding: 8, marginRight: 8 },
+  headerContent: { flex: 1 },
+  headerTitle: { fontSize: 16, fontWeight: 'bold', color: '#333' },
+  headerSubInfo: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
+  headerSubtitle: { fontSize: 12, color: '#666', marginRight: 4 },
+  onlineBadge: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#4CAF50', marginRight: 6 },
+  listContent: { padding: 16, paddingBottom: 20 },
+  messageBubble: { maxWidth: '80%', padding: 12, borderRadius: 16, marginBottom: 10 },
+  myMessage: { alignSelf: 'flex-end', backgroundColor: '#FF6B9D', borderBottomRightRadius: 4 },
+  otherMessage: { alignSelf: 'flex-start', backgroundColor: 'white', borderTopLeftRadius: 4 },
+  messageText: { fontSize: 15, lineHeight: 22 },
+  myMessageText: { color: 'white' },
+  otherMessageText: { color: '#333' },
+  timeText: { fontSize: 10, color: 'rgba(0,0,0,0.5)', marginTop: 4, alignSelf: 'flex-end' },
+  inputContainer: { flexDirection: 'row', alignItems: 'center', padding: 12, backgroundColor: 'white', borderTopWidth: 1, borderTopColor: '#eee' },
+  attachButton: { padding: 8 },
+  input: { flex: 1, backgroundColor: '#f8f9fa', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10, marginHorizontal: 8, fontSize: 15 },
+  sendButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#ddd', justifyContent: 'center', alignItems: 'center' },
+  sendButtonActive: { backgroundColor: '#FF6B9D' },
 });

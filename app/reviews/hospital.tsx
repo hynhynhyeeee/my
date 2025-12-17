@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,136 +7,200 @@ import {
   StyleSheet,
   Platform,
   StatusBar,
-  Dimensions,
+  ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import MapView, { Marker } from 'react-native-maps';
 import SearchHeader from '../../components/SearchHeader';
-
-const { width } = Dimensions.get('window');
+import { ReviewCard } from '@/components/ReviewCard';
+import { getReviewsByHospital } from '@/services/reviewService';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 
 export default function HospitalDetailScreen() {
   const params = useLocalSearchParams();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  
   const hospitalName = params.hospitalName as string;
-  const hospitalId = params.hospitalId;
-
-  // 더미 데이터
-  const hospital = {
-    id: hospitalId,
+  const [reviews, setReviews] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  // 임시 병원 정보 (나중에 Firestore에서 가져오기)
+  const hospitalInfo = {
     name: hospitalName,
     address: '서울시 강남구 역삼동 123-45',
     phone: '02-1234-5678',
-    description: '20년 전통의 성형외과 전문 병원입니다.',
-    
-    // 대표 시술 (후기 많은 순)
-    topProcedures: [
-      { name: '눈 재수술', count: 234 },
-      { name: '앞트임', count: 187 },
-      { name: '밑트임', count: 142 },
-    ],
-    
-    // 원장 목록
-    doctors: [
-      { id: 1, name: '김지수', specialty: '눈성형', experience: '15년', reviewCount: 523 },
-      { id: 2, name: '이민호', specialty: '코성형', experience: '12년', reviewCount: 412 },
-      { id: 3, name: '박서연', specialty: '윤곽', experience: '10년', reviewCount: 289 },
-    ],
-    
-    // 이벤트 배너
-    events: [
-      { id: 1, title: '쌍꺼풀 특가 이벤트', discount: '30%', endDate: '~12/31' },
-      { id: 2, title: '앞트임 + 밑트임 패키지', discount: '20%', endDate: '~01/15' },
-    ],
+    latitude: 37.4979,
+    longitude: 127.0276,
+    openHours: '평일 09:00-18:00',
+    specialties: ['눈', '코', '윤곽'],
   };
 
-  const goToDoctorReviews = (doctorName: string) => {
+  useEffect(() => {
+    loadReviews();
+  }, []);
+
+  const loadReviews = async () => {
+    try {
+      const data = await getReviewsByHospital(hospitalName, 100);
+      console.log('🏥', hospitalName, '후기:', data.length, '개');
+      setReviews(data);
+    } catch (error) {
+      console.error('❌ 병원 후기 로드 실패:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCall = () => {
+    Linking.openURL(`tel:${hospitalInfo.phone}`);
+  };
+
+  const handleChat = () => {
     router.push({
-      pathname: '/reviews/doctor',
+      pathname: '/chat/hospital',
+      params: { hospitalName }
+    });
+  };
+
+  const handleBooking = () => {
+    router.push({
+      pathname: '/booking/hospital',
       params: { 
-        doctorName: doctorName,
-        hospitalName: hospital.name,
+        hospitalName,
+        hospitalAddress: hospitalInfo.address,
+        hospitalPhone: hospitalInfo.phone,
       }
     });
   };
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="dark-content" />
+        <SearchHeader />
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="large" color="#FF6B9D" />
+          <Text style={styles.loadingText}>병원 정보를 불러오는 중...</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
       <SearchHeader />
 
-      <ScrollView style={styles.scrollContent} contentContainerStyle={styles.scrollContentContainer}>
+      <ScrollView 
+        style={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
         {/* 뒤로가기 */}
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Text style={styles.backButtonText}>← 뒤로</Text>
+        <TouchableOpacity 
+          onPress={() => router.back()} 
+          style={styles.backButton}
+        >
+          <Icon name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
 
-        {/* 병원 기본 정보 */}
-        <View style={styles.hospitalCard}>
-          <Text style={styles.hospitalName}>{hospital.name}</Text>
-          <Text style={styles.hospitalAddress}>{hospital.address}</Text>
-          <Text style={styles.hospitalPhone}>📞 {hospital.phone}</Text>
-          
-          {/* 대표 시술 */}
-          <View style={styles.topProceduresSection}>
-            <Text style={styles.sectionSubtitle}>대표 시술</Text>
-            <View style={styles.procedureTagsContainer}>
-              {hospital.topProcedures.map((proc, index) => (
-                <View key={index} style={styles.procedureTag}>
-                  <Text style={styles.procedureTagText}>{proc.name}</Text>
-                  <Text style={styles.procedureCount}>{proc.count}건</Text>
-                </View>
-              ))}
+        {/* 병원 정보 */}
+        <View style={styles.infoSection}>
+          <View style={styles.hospitalHeader}>
+            <Icon name="local-hospital" size={32} color="#FF6B9D" />
+            <View style={styles.hospitalInfo}>
+              <Text style={styles.hospitalName}>{hospitalInfo.name}</Text>
+              <Text style={styles.hospitalAddress}>{hospitalInfo.address}</Text>
             </View>
           </View>
 
-          <Text style={styles.hospitalDescription}>{hospital.description}</Text>
-        </View>
-
-        {/* 이벤트 배너 */}
-        <View style={styles.eventsSection}>
-          <Text style={styles.sectionTitle}>🎉 진행중인 이벤트</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.eventSlider}
-          >
-            {hospital.events.map((event) => (
-              <LinearGradient
-                key={event.id}
-                colors={['#ffecd2', '#fcb69f']}
-                style={styles.eventBanner}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                <Text style={styles.eventTitle}>{event.title}</Text>
-                <Text style={styles.eventDiscount}>{event.discount} 할인</Text>
-                <Text style={styles.eventDate}>{event.endDate}</Text>
-              </LinearGradient>
+          {/* 전문 분야 */}
+          <View style={styles.specialtiesRow}>
+            {hospitalInfo.specialties.map((specialty, index) => (
+              <View key={index} style={styles.specialtyBadge}>
+                <Text style={styles.specialtyText}>{specialty}</Text>
+              </View>
             ))}
-          </ScrollView>
+          </View>
+
+          {/* 영업 시간 */}
+          <View style={styles.infoRow}>
+            <Icon name="access-time" size={20} color="#666" />
+            <Text style={styles.infoText}>{hospitalInfo.openHours}</Text>
+          </View>
+
+          {/* 액션 버튼 */}
+          <View style={styles.actionButtons}>
+            <TouchableOpacity 
+              style={styles.actionButton}
+              onPress={handleCall}
+            >
+              <Icon name="phone" size={24} color="#FF6B9D" />
+              <Text style={styles.actionButtonText}>전화</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.actionButton}
+              onPress={handleChat}
+            >
+              <Icon name="chat-bubble-outline" size={24} color="#FF6B9D" />
+              <Text style={styles.actionButtonText}>채팅</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.actionButton, styles.actionButtonPrimary]}
+              onPress={handleBooking}
+            >
+              <Icon name="event" size={24} color="white" />
+              <Text style={[styles.actionButtonText, { color: 'white' }]}>
+                예약
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
-        {/* 원장 목록 */}
-        <View style={styles.doctorsSection}>
-          <Text style={styles.sectionTitle}>👨‍⚕️ 원장 목록</Text>
-          {hospital.doctors.map((doctor) => (
-            <TouchableOpacity
-              key={doctor.id}
-              style={styles.doctorItem}
-              onPress={() => goToDoctorReviews(doctor.name)}
-            >
-              <View style={styles.doctorAvatar}>
-                <Text style={styles.doctorAvatarText}>👨‍⚕️</Text>
-              </View>
-              <View style={styles.doctorInfo}>
-                <Text style={styles.doctorName}>{doctor.name} 원장</Text>
-                <Text style={styles.doctorSpecialty}>{doctor.specialty} 전문 · 경력 {doctor.experience}</Text>
-                <Text style={styles.doctorReviews}>후기 {doctor.reviewCount}건</Text>
-              </View>
-              <Text style={styles.arrowText}>→</Text>
-            </TouchableOpacity>
-          ))}
+        {/* 지도 */}
+        <View style={styles.mapSection}>
+          <Text style={styles.sectionTitle}>위치</Text>
+          <MapView
+            style={styles.map}
+            initialRegion={{
+              latitude: hospitalInfo.latitude,
+              longitude: hospitalInfo.longitude,
+              latitudeDelta: 0.01,
+              longitudeDelta: 0.01,
+            }}
+          >
+            <Marker
+              coordinate={{
+                latitude: hospitalInfo.latitude,
+                longitude: hospitalInfo.longitude,
+              }}
+              title={hospitalInfo.name}
+              description={hospitalInfo.address}
+            />
+          </MapView>
+          <Text style={styles.addressText}>{hospitalInfo.address}</Text>
+        </View>
+
+        {/* 후기 목록 */}
+        <View style={styles.reviewsSection}>
+          <Text style={styles.sectionTitle}>
+            이 병원의 후기 ({reviews.length})
+          </Text>
+          
+          {reviews.length > 0 ? (
+            reviews.map((review) => (
+              <ReviewCard key={review.id} review={review} />
+            ))
+          ) : (
+            <View style={styles.emptyState}>
+              <Icon name="rate-review" size={60} color="#ddd" />
+              <Text style={styles.emptyText}>아직 후기가 없습니다</Text>
+            </View>
+          )}
         </View>
       </ScrollView>
     </View>
@@ -150,193 +214,129 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flex: 1,
-    marginTop: Platform.OS === 'ios' ? 100 : 90,
+    marginTop: Platform.OS === 'ios' ? 0:0
   },
-  scrollContentContainer: {
-    paddingBottom: 80,
+  centerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: Platform.OS === 'ios' ? 105 : 95,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#666',
   },
   backButton: {
     padding: 16,
   },
-  backButtonText: {
-    fontSize: 16,
-    color: '#333',
-    fontWeight: '500',
-  },
-  
-  // 병원 정보 카드
-  hospitalCard: {
+  infoSection: {
     backgroundColor: 'white',
-    marginHorizontal: 16,
-    marginBottom: 16,
     padding: 20,
-    borderRadius: 16,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
+    marginBottom: 8,
+  },
+  hospitalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  hospitalInfo: {
+    marginLeft: 12,
+    flex: 1,
   },
   hospitalName: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '700',
     color: '#333',
-    marginBottom: 12,
+    marginBottom: 4,
   },
   hospitalAddress: {
     fontSize: 14,
     color: '#666',
-    marginBottom: 4,
   },
-  hospitalPhone: {
-    fontSize: 14,
-    color: '#333',
-    fontWeight: '500',
-    marginBottom: 20,
-  },
-  topProceduresSection: {
-    marginBottom: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
-  },
-  sectionSubtitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
-    marginBottom: 8,
-  },
-  procedureTagsContainer: {
+  specialtiesRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 8,
+    marginBottom: 16,
   },
-  procedureTag: {
-    backgroundColor: '#f5f5f5',
+  specialtyBadge: {
+    backgroundColor: '#FFF0F5',
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  specialtyText: {
+    fontSize: 13,
+    color: '#FF6B9D',
+    fontWeight: '600',
+  },
+  infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
+    marginBottom: 16,
   },
-  procedureTagText: {
-    fontSize: 14,
-    color: '#333',
-    fontWeight: '500',
-  },
-  procedureCount: {
-    fontSize: 12,
-    color: '#999',
-  },
-  hospitalDescription: {
+  infoText: {
     fontSize: 14,
     color: '#666',
-    lineHeight: 22,
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
   },
-  
-  // 이벤트 섹션
-  eventsSection: {
-    marginBottom: 24,
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FF6B9D',
+  },
+  actionButtonPrimary: {
+    backgroundColor: '#FF6B9D',
+    borderColor: '#FF6B9D',
+  },
+  actionButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FF6B9D',
+  },
+  mapSection: {
+    backgroundColor: 'white',
+    padding: 20,
+    marginBottom: 8,
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 12,
-    paddingHorizontal: 16,
-  },
-  eventSlider: {
-    paddingHorizontal: 16,
-    gap: 12,
-  },
-  eventBanner: {
-    width: width - 80,
-    padding: 20,
-    borderRadius: 16,
-  },
-  eventTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
-  },
-  eventDiscount: {
-    fontSize: 24,
     fontWeight: '700',
     color: '#333',
-    marginBottom: 4,
+    marginBottom: 16,
   },
-  eventDate: {
-    fontSize: 13,
-    color: '#666',
-  },
-  
-  // 원장 목록
-  doctorsSection: {
-    paddingHorizontal: 16,
-  },
-  doctorItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'white',
-    padding: 16,
-    borderRadius: 16,
+  map: {
+    height: 200,
+    borderRadius: 12,
     marginBottom: 12,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
   },
-  doctorAvatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#f0f0f0',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-  },
-  doctorAvatarText: {
-    fontSize: 30,
-  },
-  doctorInfo: {
-    flex: 1,
-  },
-  doctorName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 4,
-  },
-  doctorSpecialty: {
-    fontSize: 13,
+  addressText: {
+    fontSize: 14,
     color: '#666',
-    marginBottom: 2,
+    textAlign: 'center',
   },
-  doctorReviews: {
-    fontSize: 12,
+  reviewsSection: {
+    backgroundColor: 'white',
+    padding: 20,
+    marginBottom: 80,
+  },
+  emptyState: {
+    padding: 60,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 16,
     color: '#999',
-  },
-  arrowText: {
-    fontSize: 20,
-    color: '#333',
+    marginTop: 16,
   },
 });

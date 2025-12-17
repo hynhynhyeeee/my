@@ -16,7 +16,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 
 const { width } = Dimensions.get('window');
 
-export default function SpecialEventsScreen() {
+export default function EventsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const selectedEventId = params.selectedEventId ? parseInt(params.selectedEventId as string) : null;
@@ -24,30 +24,36 @@ export default function SpecialEventsScreen() {
   const events = [
     {
       id: 1,
-      icon: 'card-giftcard',
-      title: '신규회원 웰컴 쿠폰',
-      discount: '최대 50만원',
-      description: '첫 예약시 즉시 사용 가능',
-      badge: 'NEW',
-      colors: ['#667eea', '#764ba2'],
+      hospitalName: 'A성형외과',
+      hospitalId: 1,
+      procedure: '쌍꺼풀/눈매교정',
+      discount: '첫상담 무료 + 10% 할인',
+      originalPrice: '150만원',
+      salePrice: '135만원',
+      badge: 'HOT',
+      colors: ['#FF6B9D', '#FF8FAB'],
     },
     {
       id: 2,
-      icon: 'flash-on',
-      title: '한정 특가 SALE',
-      discount: '20~30% OFF',
-      description: '쌍꺼풀/코성형 특별 할인',
-      badge: 'HOT',
-      colors: ['#f093fb', '#f5576c'],
+      hospitalName: 'B클리닉',
+      hospitalId: 2,
+      procedure: '필러/보톡스',
+      discount: '첫상담 무료',
+      originalPrice: '80만원',
+      salePrice: '80만원',
+      badge: 'NEW',
+      colors: ['#9C27B0', '#BA68C8'],
     },
     {
       id: 3,
-      icon: 'favorite',
-      title: '후기 작성 이벤트',
-      discount: '5,000P 적립',
-      description: '다음 시술시 현금처럼 사용',
-      badge: 'EVENT',
-      colors: ['#4facfe', '#00f2fe'],
+      hospitalName: 'C성형외과',
+      hospitalId: 3,
+      procedure: '코성형',
+      discount: '첫상담 무료 + 15% 할인',
+      originalPrice: '400만원',
+      salePrice: '340만원',
+      badge: 'BEST',
+      colors: ['#667eea', '#764ba2'],
     },
   ];
 
@@ -61,14 +67,15 @@ export default function SpecialEventsScreen() {
 
   const handleEventPress = (event: any) => {
     router.push({
-      pathname: '/reviews/special-event-detail',
+      pathname: '/reviews/event-detail',
       params: {
         eventId: event.id,
-        icon: event.icon,
-        title: event.title,
+        hospitalId: event.hospitalId,
+        hospitalName: event.hospitalName,
+        procedure: event.procedure,
         discount: event.discount,
-        description: event.description,
-        badge: event.badge,
+        originalPrice: event.originalPrice,
+        salePrice: event.salePrice,
       }
     });
   };
@@ -88,8 +95,8 @@ export default function SpecialEventsScreen() {
         </TouchableOpacity>
 
         <View style={styles.header}>
-          <Icon name="stars" size={28} color="#FF6B9D" />
-          <Text style={styles.title}>특별 이벤트</Text>
+          <Icon name="local-offer" size={28} color="#FF6B9D" />
+          <Text style={styles.title}>첫상담 무료 이벤트</Text>
         </View>
 
         <View style={styles.eventsList}>
@@ -104,10 +111,15 @@ export default function SpecialEventsScreen() {
                 <Text style={styles.eventBadgeText}>{event.badge}</Text>
               </View>
 
-              <Icon name={event.icon} size={80} color="white" style={styles.eventIcon} />
-              <Text style={styles.eventTitle}>{event.title}</Text>
-              <Text style={styles.eventDescription}>{event.description}</Text>
-              <Text style={styles.eventDiscount}>{event.discount}</Text>
+              <Text style={styles.hospitalName}>{event.hospitalName}</Text>
+              <Text style={styles.procedure}>{event.procedure}</Text>
+              <Text style={styles.discount}>{event.discount}</Text>
+
+              <View style={styles.priceContainer}>
+                <Text style={styles.originalPrice}>{event.originalPrice}</Text>
+                <Icon name="arrow-forward" size={16} color="rgba(255,255,255,0.8)" />
+                <Text style={styles.salePrice}>{event.salePrice}</Text>
+              </View>
 
               <View style={styles.footer}>
                 <Text style={styles.footerText}>자세히 보기</Text>
@@ -155,63 +167,68 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   eventCard: {
-    padding: 32,
-    borderRadius: 20,
+    padding: 20,
+    borderRadius: 16,
     position: 'relative',
-    minHeight: 300,
-    alignItems: 'center',
-    justifyContent: 'center',
+    minHeight: 180,
   },
   eventBadge: {
     position: 'absolute',
-    top: 16,
-    right: 16,
+    top: 12,
+    right: 12,
     backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.5)',
   },
   eventBadgeText: {
     color: 'white',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 'bold',
   },
-  eventIcon: {
-    marginBottom: 20,
-  },
-  eventTitle: {
-    fontSize: 28,
+  hospitalName: {
+    fontSize: 20,
     fontWeight: '700',
     color: 'white',
-    marginBottom: 12,
-    textAlign: 'center',
+    marginBottom: 8,
   },
-  eventDescription: {
+  procedure: {
     fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.9)',
-    marginBottom: 16,
-    textAlign: 'center',
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.95)',
+    marginBottom: 8,
   },
-  eventDiscount: {
-    fontSize: 36,
+  discount: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.9)',
+    marginBottom: 12,
+  },
+  priceContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 16,
+  },
+  originalPrice: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.7)',
+    textDecorationLine: 'line-through',
+  },
+  salePrice: {
+    fontSize: 24,
     fontWeight: 'bold',
     color: 'white',
-    marginBottom: 24,
-    textAlign: 'center',
   },
   footer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 24,
+    justifyContent: 'flex-end',
+    gap: 4,
   },
   footerText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: 'white',
   },

@@ -1,146 +1,140 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Platform,
   Alert,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import * as ImagePicker from 'expo-image-picker';
+import { analyzeEyePhoto } from '@/services/aiMatching';
 
 export default function SearchHeader() {
   const router = useRouter();
+  const [searchText, setSearchText] = useState('');
 
-  const pickImage = async () => {
-    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    
-    if (permissionResult.granted === false) {
-      Alert.alert('권한 필요', '갤러리 접근 권한이 필요합니다.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 1,
-    });
-
-    if (!result.canceled) {
-      Alert.alert('이미지 선택됨', `이미지 분석 기능이 여기에 구현됩니다.`);
+  const handleSearch = () => {
+    if (searchText.trim()) {
+      console.log('🔍 검색:', searchText);
+      router.push({
+        pathname: '/reviews/index',
+        params: { query: searchText },
+      });
     }
   };
 
-  const handleSearch = () => {
-    Alert.alert('검색', '검색 기능이 여기에 구현됩니다.');
+  const handleCameraPress = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (status !== 'granted') {
+        Alert.alert('권한 필요', '갤러리 접근 권한이 필요합니다.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+
+        quality: 0.8,
+      });
+
+      if (result.canceled) {
+        return;
+      }
+
+      console.log('📸 이미지 선택됨:', result.assets[0].uri);
+
+      Alert.alert('분석 중', 'AI가 유사한 눈을 찾고 있습니다...');
+
+      const matches = await analyzeEyePhoto(result.assets[0].uri);
+
+      console.log('✅ AI 분석 완료:', matches.length, '개');
+
+      router.push({
+        pathname: '/(tabs)/recommended',
+        params: {
+          aiResults: JSON.stringify(matches.slice(0, 100)),
+        },
+      });
+    } catch (error) {
+      console.error('❌ AI 분석 실패:', error);
+      Alert.alert('오류', 'AI 분석 중 오류가 발생했습니다. 다시 시도해주세요.');
+    }
   };
 
   return (
-    <View style={styles.fixedHeader}>
-      <View style={styles.topBanner}>
-        <Text style={styles.bannerText}>my!</Text>
+    <View style={styles.container}>
+      <View style={styles.logoContainer}>
+        <Text style={styles.logoText}>Beauty Inside</Text>
       </View>
 
-      <View style={styles.searchSection}>
-        <View style={styles.searchContainer}>
-          <View style={styles.searchInputContainer}>
-            <TextInput
-              style={styles.searchInput}
-              placeholder="원하는 시술이나 부위를 검색하세요"
-              placeholderTextColor="#999"
-              onSubmitEditing={handleSearch}
-            />
-            <TouchableOpacity onPress={handleSearch} style={styles.searchIconButton}>
-              <Text style={styles.searchIcon}>🔍</Text>
-            </TouchableOpacity>
-          </View>
-          
-          <TouchableOpacity style={styles.cameraButton} onPress={pickImage}>
-            <Text style={styles.cameraButtonText}>📷</Text>
+      <View style={styles.searchContainer}>
+        <Icon name="search" size={20} color="#999" style={styles.searchIcon} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="병원, 시술, 의사 검색..."
+          placeholderTextColor="#999"
+          value={searchText}
+          onChangeText={setSearchText}
+          onSubmitEditing={handleSearch}
+          returnKeyType="search"
+        />
+        {searchText.length > 0 && (
+          <TouchableOpacity onPress={() => setSearchText('')}>
+            <Icon name="close" size={20} color="#999" />
           </TouchableOpacity>
-        </View>
+        )}
+
+        <TouchableOpacity style={styles.cameraButton} onPress={handleCameraPress}>
+          <Icon name="photo-camera" size={20} color="#FF6B9D" />
+        </TouchableOpacity>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  fixedHeader: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 100,
+  container: {
     backgroundColor: 'white',
-    paddingTop: Platform.OS === 'ios' ? 40 : 0, // 줄임
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 5,
-      },
-    }),
-  },
-  topBanner: {
-    paddingHorizontal: 20,
-    paddingVertical: 2, // 줄임
-    backgroundColor: 'white',
-  },
-  bannerText: {
-    fontSize: 18, // 줄임
-    fontWeight: '700',
-    color: '#333',
-  },
-  searchSection: {
+    paddingTop: Platform.OS === 'ios' ? 50 : 10,
+    paddingBottom: 10,
     paddingHorizontal: 16,
-    paddingTop: 2,
-    paddingBottom: 8,
-    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  logoContainer: {
+    alignItems: 'flex-start',
+    marginBottom: 10,
+  },
+  logoText: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#FF6B9D',
+    letterSpacing: 0.5,
   },
   searchContainer: {
     flexDirection: 'row',
-    gap: 8,
     alignItems: 'center',
-  },
-  searchInputContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#e0e0e0',
+    backgroundColor: '#f5f5f5',
     borderRadius: 12,
-    backgroundColor: 'white',
-    paddingLeft: 12,
+    paddingHorizontal: 12,
+    height: 44,
+  },
+  searchIcon: {
+    marginRight: 8,
   },
   searchInput: {
     flex: 1,
-    padding: 8,
-    fontSize: 14,
-  },
-  searchIconButton: {
-    padding: 6,
-  },
-  searchIcon: {
-    fontSize: 16,
+    fontSize: 15,
+    color: '#333',
   },
   cameraButton: {
-    width: 40,
-    height: 40,
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-    borderColor: '#e0e0e0',
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cameraButtonText: {
-    fontSize: 16,
+    marginLeft: 8,
+    padding: 4,
   },
 });

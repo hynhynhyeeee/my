@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,186 +7,125 @@ import {
   StyleSheet,
   Platform,
   StatusBar,
-  Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import SearchHeader from '../../components/SearchHeader';
+import { ReviewCard } from '@/components/ReviewCard';
+import { getReviewsByDoctor } from '@/services/reviewService';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 
-const { width } = Dimensions.get('window');
-
-type FilterType = 'similarity' | 'likes' | 'views';
-
-export default function DoctorReviewsScreen() {
+export default function DoctorDetailScreen() {
   const params = useLocalSearchParams();
   const router = useRouter();
+  
   const doctorName = params.doctorName as string;
   const hospitalName = params.hospitalName as string;
-  
-  const [selectedFilter, setSelectedFilter] = useState<FilterType>('similarity');
-  const [isFavorited, setIsFavorited] = useState(false);
+  const [reviews, setReviews] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // 의사 정보
-  const doctorInfo = {
-    name: doctorName,
-    hospital: hospitalName,
-    totalReviews: 523,
-    favoriteCount: 1247, // 즐겨찾기 개수
-    oneLiner: '자연스러운 라인 전문, 섬세한 디자인', // 키워드 기반 한줄평
-    topKeywords: ['자연스러운', '섬세한', '친절한', '꼼꼼한'],
+  useEffect(() => {
+    loadReviews();
+  }, []);
+
+  const loadReviews = async () => {
+    try {
+      const data = await getReviewsByDoctor(doctorName, 100);
+      console.log('👨‍⚕️', doctorName, '후기:', data.length, '개');
+      setReviews(data);
+    } catch (error) {
+      console.error('❌ 의사 후기 로드 실패:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const reviews = [
-    {
-      id: 1,
-      category: '눈',
-      hospital: hospitalName,
-      procedure: '쌍꺼풀 + 앞트임',
-      likes: 2341,
-      views: 15234,
-      similarity: 95,
-    },
-    {
-      id: 2,
-      category: '눈',
-      hospital: hospitalName,
-      procedure: '눈매교정',
-      likes: 1876,
-      views: 12456,
-      similarity: 92,
-    },
-  ];
-
-  const sortedReviews = [...reviews].sort((a, b) => {
-    if (selectedFilter === 'similarity') return b.similarity - a.similarity;
-    if (selectedFilter === 'likes') return b.likes - a.likes;
-    return b.views - a.views;
-  });
-
-  const toggleFavorite = () => {
-    setIsFavorited(!isFavorited);
-  };
-
-  const toggleHeart = (reviewId: number) => {
-    console.log('Toggle heart:', reviewId);
-  };
-
-  const viewReview = (reviewId: number) => {
-    router.push({
-      pathname: '/reviews/detail',
-      params: { id: reviewId }
-    });
-  };
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="dark-content" />
+        <SearchHeader />
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="large" color="#FF6B9D" />
+          <Text style={styles.loadingText}>후기를 불러오는 중...</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
       <SearchHeader />
 
-      <ScrollView style={styles.scrollContent} contentContainerStyle={styles.scrollContentContainer}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Text style={styles.backButtonText}>← 뒤로</Text>
+      <ScrollView 
+        style={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* 뒤로가기 */}
+        <TouchableOpacity 
+          onPress={() => router.back()} 
+          style={styles.backButton}
+        >
+          <Icon name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
 
-        {/* 의사 프로필 */}
-        <View style={styles.doctorProfile}>
+        {/* 의사 정보 */}
+        <View style={styles.doctorSection}>
           <View style={styles.doctorHeader}>
             <View style={styles.doctorAvatar}>
-              <Text style={styles.doctorAvatarText}>👨‍⚕️</Text>
+              <Icon name="person" size={40} color="white" />
             </View>
             <View style={styles.doctorInfo}>
-              <Text style={styles.doctorName}>{doctorInfo.name} 원장</Text>
-              <Text style={styles.doctorHospital}>{doctorInfo.hospital}</Text>
-              <Text style={styles.doctorReviewCount}>후기 {doctorInfo.totalReviews}건</Text>
+              <Text style={styles.doctorName}>{doctorName}</Text>
+              {hospitalName && (
+                <Text style={styles.hospitalName}>{hospitalName}</Text>
+              )}
+              <View style={styles.statsRow}>
+                <View style={styles.stat}>
+                  <Text style={styles.statNumber}>{reviews.length}</Text>
+                  <Text style={styles.statLabel}>후기</Text>
+                </View>
+              </View>
             </View>
-            
-            {/* 즐겨찾기 버튼 */}
-            <TouchableOpacity onPress={toggleFavorite} style={styles.favoriteButton}>
-              <Text style={styles.favoriteIcon}>{isFavorited ? '⭐' : '☆'}</Text>
-              <Text style={styles.favoriteCount}>{doctorInfo.favoriteCount + (isFavorited ? 1 : 0)}</Text>
-            </TouchableOpacity>
           </View>
 
-          {/* 한줄평 */}
-          <View style={styles.oneLinerSection}>
-            <Text style={styles.oneLinerText}>"{doctorInfo.oneLiner}"</Text>
-          </View>
-
-          {/* 키워드 */}
-          <View style={styles.keywordSection}>
-            {doctorInfo.topKeywords.map((keyword, index) => (
-              <View key={index} style={styles.keywordTag}>
-                <Text style={styles.keywordText}>#{keyword}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-
-        {/* 정렬 필터 */}
-        <View style={styles.sortFilterSection}>
-          <TouchableOpacity
-            style={[styles.sortButton, selectedFilter === 'similarity' && styles.sortButtonActive]}
-            onPress={() => setSelectedFilter('similarity')}
-          >
-            <Text style={[styles.sortButtonText, selectedFilter === 'similarity' && styles.sortButtonTextActive]}>
-              나와 비슷한 눈
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.sortButton, selectedFilter === 'likes' && styles.sortButtonActive]}
-            onPress={() => setSelectedFilter('likes')}
-          >
-            <Text style={[styles.sortButtonText, selectedFilter === 'likes' && styles.sortButtonTextActive]}>
-              하트 많은순
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.sortButton, selectedFilter === 'views' && styles.sortButtonActive]}
-            onPress={() => setSelectedFilter('views')}
-          >
-            <Text style={[styles.sortButtonText, selectedFilter === 'views' && styles.sortButtonTextActive]}>
-              조회수순
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* 후기 리스트 */}
-        <View style={styles.reviewList}>
-          {sortedReviews.map((review) => (
-            <TouchableOpacity 
-              key={review.id} 
-              style={styles.reviewCard} 
-              activeOpacity={0.9}
-              onPress={() => viewReview(review.id)}
+          {/* 병원 페이지로 이동 */}
+          {hospitalName && (
+            <TouchableOpacity
+              style={styles.hospitalButton}
+              onPress={() => router.push({
+                pathname: '/reviews/hospital',
+                params: { hospitalName }
+              })}
             >
-              <View style={styles.reviewImages}>
-                <View style={styles.reviewImageHalf}>
-                  <Text style={styles.reviewImageLabel}>BEFORE</Text>
-                </View>
-                <View style={[styles.reviewImageHalf, styles.reviewImageAfter]}>
-                  <Text style={styles.reviewImageLabel}>AFTER</Text>
-                </View>
-              </View>
-              <View style={styles.similarityBadge}>
-                <Text style={styles.similarityBadgeText}>유사도 {review.similarity}%</Text>
-              </View>
-              <View style={styles.reviewCardInfo}>
-                <View style={styles.reviewCardHeader}>
-                  <Text style={styles.reviewCardCategory}>{review.category}</Text>
-                  <TouchableOpacity onPress={(e) => {
-                    e.stopPropagation();
-                    toggleHeart(review.id);
-                  }}>
-                    <Text style={styles.heartIcon}>🤍</Text>
-                  </TouchableOpacity>
-                </View>
-                <Text style={styles.reviewCardProcedure}>{review.procedure}</Text>
-                <View style={styles.reviewCardStats}>
-                  <Text style={styles.reviewCardStat}>❤️ {review.likes}</Text>
-                  <Text style={styles.reviewCardStat}>👁️ {review.views}</Text>
-                </View>
-              </View>
+              <Icon name="local-hospital" size={20} color="#FF6B9D" />
+              <Text style={styles.hospitalButtonText}>
+                {hospitalName} 전체 후기 보기
+              </Text>
+              <Icon name="chevron-right" size={20} color="#999" />
             </TouchableOpacity>
-          ))}
+          )}
+        </View>
+
+        {/* 후기 목록 */}
+        <View style={styles.reviewsSection}>
+          <Text style={styles.sectionTitle}>
+            {doctorName} 원장님의 후기 ({reviews.length})
+          </Text>
+          
+          {reviews.length > 0 ? (
+            reviews.map((review) => (
+              <ReviewCard key={review.id} review={review} />
+            ))
+          ) : (
+            <View style={styles.emptyState}>
+              <Icon name="rate-review" size={60} color="#ddd" />
+              <Text style={styles.emptyText}>
+                아직 {doctorName} 원장님의 후기가 없습니다
+              </Text>
+            </View>
+          )}
         </View>
       </ScrollView>
     </View>
@@ -200,36 +139,26 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flex: 1,
-    marginTop: Platform.OS === 'ios' ? 100 : 90,
+    marginTop: 0,
   },
-  scrollContentContainer: {
-    paddingBottom: 100,
+  centerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: Platform.OS === 'ios' ? 105 : 95,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#666',
   },
   backButton: {
     padding: 16,
   },
-  backButtonText: {
-    fontSize: 16,
-    color: '#333',
-    fontWeight: '500',
-  },
-  doctorProfile: {
+  doctorSection: {
     backgroundColor: 'white',
-    marginHorizontal: 16,
-    marginBottom: 8,
     padding: 20,
-    borderRadius: 16,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
+    marginBottom: 8,
   },
   doctorHeader: {
     flexDirection: 'row',
@@ -237,189 +166,77 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   doctorAvatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#f0f0f0',
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#667eea',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
-  },
-  doctorAvatarText: {
-    fontSize: 30,
   },
   doctorInfo: {
+    marginLeft: 16,
     flex: 1,
   },
   doctorName: {
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: '700',
     color: '#333',
     marginBottom: 4,
   },
-  doctorHospital: {
+  hospitalName: {
     fontSize: 14,
     color: '#666',
-    marginBottom: 2,
+    marginBottom: 12,
   },
-  doctorReviewCount: {
+  statsRow: {
+    flexDirection: 'row',
+    gap: 24,
+  },
+  stat: {
+    alignItems: 'center',
+  },
+  statNumber: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FF6B9D',
+  },
+  statLabel: {
     fontSize: 12,
     color: '#999',
   },
-  favoriteButton: {
+  hospitalButton: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-  },
-  favoriteIcon: {
-    fontSize: 32,
-    marginBottom: 4,
-  },
-  favoriteCount: {
-    fontSize: 11,
-    color: '#666',
-    fontWeight: '600',
-  },
-  oneLinerSection: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    backgroundColor: '#f8f9fa',
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-  oneLinerText: {
-    fontSize: 14,
-    color: '#333',
-    fontWeight: '500',
-    textAlign: 'center',
-    fontStyle: 'italic',
-  },
-  keywordSection: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  keywordTag: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 12,
-  },
-  keywordText: {
-    fontSize: 13,
-    color: '#666',
-  },
-  sortFilterSection: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 8,
-    backgroundColor: 'white',
-    marginBottom: 8,
-  },
-  sortButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 16,
-    backgroundColor: '#f0f0f0',
-  },
-  sortButtonActive: {
-    backgroundColor: '#333',
-  },
-  sortButtonText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#666',
-  },
-  sortButtonTextActive: {
-    color: 'white',
-  },
-  reviewList: {
-    padding: 16,
-    gap: 16,
-  },
-  reviewCard: {
-    backgroundColor: 'white',
-    borderRadius: 16,
-    overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
-  },
-  reviewImages: {
-    flexDirection: 'row',
     gap: 8,
     padding: 12,
-  },
-  reviewImageHalf: {
-    flex: 1,
-    aspectRatio: 0.75,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: '#FFF0F5',
     borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  reviewImageAfter: {
-    backgroundColor: '#e8f5e9',
-  },
-  reviewImageLabel: {
+  hospitalButtonText: {
+    flex: 1,
     fontSize: 14,
     fontWeight: '600',
-    color: '#999',
+    color: '#FF6B9D',
   },
-  similarityBadge: {
-    position: 'absolute',
-    top: 20,
-    left: 20,
-    backgroundColor: '#333',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    zIndex: 10,
+  reviewsSection: {
+    backgroundColor: 'white',
+    padding: 20,
+    marginBottom: 80,
   },
-  similarityBadgeText: {
-    color: 'white',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  reviewCardInfo: {
-    padding: 16,
-    paddingTop: 8,
-  },
-  reviewCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  reviewCardCategory: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#666',
-  },
-  heartIcon: {
-    fontSize: 20,
-  },
-  reviewCardProcedure: {
-    fontSize: 16,
-    fontWeight: '600',
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
     color: '#333',
-    marginBottom: 8,
+    marginBottom: 16,
   },
-  reviewCardStats: {
-    flexDirection: 'row',
-    gap: 12,
+  emptyState: {
+    padding: 60,
+    alignItems: 'center',
   },
-  reviewCardStat: {
-    fontSize: 13,
+  emptyText: {
+    fontSize: 16,
     color: '#999',
+    marginTop: 16,
+    textAlign: 'center',
   },
 });
