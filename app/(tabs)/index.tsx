@@ -10,7 +10,7 @@ import {
   FlatList,
   Platform,
   StatusBar,
-  RefreshControl // 👈 새로고침 기능 추가
+  RefreshControl
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -22,7 +22,6 @@ import { getAiResultsLocally } from '@/services/aiMatching';
 
 const { width } = Dimensions.get('window');
 
-// (이벤트 데이터들은 기존 그대로 유지)
 const specialEvents = [
   { id: 1, title: '수험표만 있으면\n최대 49% 할인!', subtitle: '26학년도 수험생 전용 이벤트', period: '2025.10.27 ~ 2026.01.31', colors: ['#FF9A76', '#FF6B9D'], badge: 'HOT', icon: 'school' },
   { id: 2, title: '안녕 연말, 안녕 새해\n최대 49% 할인!', subtitle: '새롭게 다가올 2026년을 준비하세요', period: '2025.12.08 ~ 2026.01.31', colors: ['#FFD8CC', '#FFBFA9'], badge: 'NEW', icon: 'celebration' },
@@ -44,7 +43,7 @@ export default function HomeScreen() {
   const [recommendedReviews, setRecommendedReviews] = useState<Review[]>([]);
   const [savedReviews, setSavedReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false); // 👈 새로고침 상태 추가
+  const [refreshing, setRefreshing] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -54,15 +53,41 @@ export default function HomeScreen() {
 
   const loadData = async () => {
     try {
-      // 1. 추천 후기 (10개만 가져오기)
-      const allData = await getAllReviews(10);
-      setRecommendedReviews(allData.slice(0, 5));
+      // 🔥 1. AI 매칭 결과가 있으면 그걸 사용 (유사도 높은 순)
+      const aiResults = await getAiResultsLocally();
+      
+      if (aiResults && aiResults.length > 0) {
+        console.log('✅ AI 매칭 결과 사용:', aiResults.length, '개');
+        
+        // AI 결과를 Review 형태로 변환 (유사도 포함!)
+        const aiReviews = aiResults
+          .filter((match: any) => match.before_url && match.after_url)
+          .map((match: any, index: number) => ({
+            id: `ai_${index}`,
+            hospital_name: match.hospital,
+            before_img: match.before_url,
+            after_img: match.after_url,
+            similarity: match.similarity, // 🔥 유사도 포함!
+            procedures: match.label,
+            likeCount: 0,
+            viewCount: 0,
+          }));
+        
+        // 유사도 높은 순으로 이미 정렬되어 있지만, 한 번 더 확인
+        aiReviews.sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
+        
+        setRecommendedReviews(aiReviews.slice(0, 10)); // 상위 10개만
+      } else {
+        console.log('⚠️ AI 결과 없음, 기본 추천 사용');
+        // AI 결과가 없으면 일반 후기 10개
+        const allData = await getAllReviews(10);
+        setRecommendedReviews(allData.slice(0, 5));
+      }
 
-      // 2. 저장한 후기 (🔥 여기가 수정된 부분: 100개 가져와서 내꺼 찾기)
+      // 2. 저장한 후기
       const likedIds = await getLikedReviewIds();
       if (likedIds.length > 0) {
-        // 내 찜 목록이 뒤쪽에 있을 수도 있으니 넉넉히 가져옵니다.
-        const ampleData = await getAllReviews(100); 
+        const ampleData = await getAllReviews(100);
         const mySaved = ampleData.filter(r => r.id && likedIds.includes(String(r.id)));
         setSavedReviews(mySaved);
       } else {
@@ -72,7 +97,7 @@ export default function HomeScreen() {
       console.error('[Home] Load Error:', error);
     } finally {
       setLoading(false);
-      setRefreshing(false); // 로딩 끝
+      setRefreshing(false);
     }
   };
 
@@ -89,13 +114,11 @@ export default function HomeScreen() {
   };
 
   const BeforeAfterReviewCard = ({ review }: { review: Review }) => {
-    // 🔥 안전장치: DB 필드명과 앱 변수명 호환성 체크
     const beforeUrl = review.beforeImageUrl || review.before_img;
     const afterUrl = review.afterImageUrl || review.after_img;
     const hospitalName = review.hospitalName || review.hospital_name;
     const procedures = review.procedures;
     
-    // URL 보정
     const fixUrl = (url: string) => url ? url.replace('firebasestoragee', 'firebasestorage').replace('..app', '.app') : '';
 
     if (!beforeUrl || !afterUrl) return null;
@@ -118,6 +141,16 @@ export default function HomeScreen() {
             <View style={styles.imageLabel}>
               <Text style={styles.imageLabelText}>AFTER</Text>
             </View>
+            
+            {/* 🔥 유사도 뱃지 추가! */}
+            {review.similarity !== undefined && review.similarity > 0 && (
+              <View style={styles.similarityBadge}>
+                <Icon name="auto-awesome" size={12} color="#FF6B9D" />
+                <Text style={styles.similarityText}>
+                  {Math.round(review.similarity * 100)}%
+                </Text>
+              </View>
+            )}
           </View>
         </View>
         
@@ -143,7 +176,6 @@ export default function HomeScreen() {
     );
   };
 
-  // ... (FreeConsultCard, SpecialEventBanner는 기존과 동일)
   const FreeConsultCard = ({ event }: any) => (
     <TouchableOpacity style={styles.consultCard} onPress={() => router.push({ pathname: '/reviews/events', params: { selectedEventId: event.id } })} activeOpacity={0.9}>
       <LinearGradient colors={event.colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.consultGradient}>
@@ -200,13 +232,13 @@ export default function HomeScreen() {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-        refreshControl={ // 👇 당겨서 새로고침 연결
+        refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FF6B9D" />
         }
       >
         <SearchHeader />
         
-        {/* 추천 후기 */}
+        {/* 🔥 AI 추천 후기 (유사도 높은 순!) */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Icon name="auto-awesome" size={20} color="#FF6B9D" />
@@ -217,8 +249,8 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-            {recommendedReviews.map((review) => (
-              <BeforeAfterReviewCard key={review.id} review={review} />
+            {recommendedReviews.map((review, index) => (
+              <BeforeAfterReviewCard key={review.id || index} review={review} />
             ))}
           </ScrollView>
         </View>
@@ -267,7 +299,7 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* 👇👇 저장한 후기 (이제 다 뜹니다!) 👇👇 */}
+        {/* 저장한 후기 */}
         {savedReviews.length > 0 && (
           <View style={[styles.section, { marginBottom: 30 }]}>
             <View style={styles.sectionHeader}>
@@ -308,6 +340,30 @@ const styles = StyleSheet.create({
   halfImage: { width: '100%', aspectRatio: 0.75, borderRadius: 12, backgroundColor: '#f0f0f0' },
   imageLabel: { position: 'absolute', top: 8, left: 8, backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   imageLabelText: { color: 'white', fontSize: 10, fontWeight: '600' },
+  
+  // 🔥 유사도 뱃지 스타일 추가!
+  similarityBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 },
+      android: { elevation: 3 }
+    })
+  },
+  similarityText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FF6B9D'
+  },
+  
   reviewInfo: { padding: 16, paddingTop: 8 },
   hospitalName: { fontSize: 14, color: '#666', marginBottom: 4 },
   procedureText: { fontSize: 16, fontWeight: '600', color: '#333', marginBottom: 8 },

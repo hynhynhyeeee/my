@@ -24,7 +24,6 @@ export default function ReviewDetailScreen() {
   const [review, setReview] = useState<any>(null);
   const [reviewText, setReviewText] = useState('');
   
-  // 좋아요 상태
   const [isLiked, setIsLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
 
@@ -50,25 +49,28 @@ export default function ReviewDetailScreen() {
 
       let reviewData: any = null;
 
+      // 🔥 Firestore에서 가져오기
       if (params.id && !String(params.id).startsWith('ai_')) {
         const data = await getReviewById(params.id as string);
         if (data) reviewData = { ...data, id: data.id };
       } 
       
-      if (!reviewData && (params.beforeUrl || params.id)) {
+      // 🔥 params에서 직접 가져오기 (AI 매칭 결과 등)
+      if (!reviewData && (params.before_img || params.beforeUrl || params.id)) {
         reviewData = {
           id: String(params.id || ''),
-          beforeImageUrl: params.beforeUrl,
-          afterImageUrl: params.afterUrl,
-          hospitalName: params.hospitalName,
-          doctorName: params.doctorName,
+          before_img: params.before_img || params.beforeUrl,
+          after_img: params.after_img || params.afterUrl,
+          hospital_name: params.hospital_name || params.hospitalName,
+          doctor_name: params.doctor_name || params.doctorName,
           procedures: params.procedures,
           cost: params.cost,
-          review_text: params.summary,
-          doctor_total_reviews: Math.floor(Math.random() * 100),
-          hospital_total_reviews: Math.floor(Math.random() * 500),
-          doctor_best_keywords: '절개 눈매교정,앞트임,자연유착',
-          hospital_best_keywords: '눈 재수술,코 수술,리프팅',
+          review_text: params.review_text || params.summary,
+          similarity: params.similarity, // 🔥 유사도 추가!
+          doctor_total_reviews: params.doctor_total_reviews || Math.floor(Math.random() * 100),
+          hospital_total_reviews: params.hospital_total_reviews || Math.floor(Math.random() * 500),
+          doctor_best_keywords: params.doctor_best_keywords || '절개 눈매교정,앞트임,자연유착',
+          hospital_best_keywords: params.hospital_best_keywords || '눈 재수술,코 수술,리프팅',
         };
       }
 
@@ -93,6 +95,7 @@ export default function ReviewDetailScreen() {
           totalReviewsHospital: reviewData.hospital_total_reviews || 0,
           likeCount: Number(reviewData.likeCount || 0),
           viewCount: Number(reviewData.viewCount || 0),
+          similarity: reviewData.similarity, // 🔥 유사도 전달!
         };
 
         setReview(normalized);
@@ -151,6 +154,16 @@ export default function ReviewDetailScreen() {
           <View style={styles.halfImage}>
             <Image source={{ uri: review.afterUrl }} style={styles.img} resizeMode="cover" />
             <View style={[styles.label, {backgroundColor:'#4CAF50'}]}><Text style={styles.labelText}>AFTER</Text></View>
+            
+            {/* 🔥 유사도 뱃지 추가! */}
+            {review.similarity !== undefined && review.similarity > 0 && (
+              <View style={styles.similarityBadge}>
+                <Icon name="auto-awesome" size={14} color="#FF6B9D" />
+                <Text style={styles.similarityText}>
+                  {Math.round(review.similarity * 100)}%
+                </Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -226,7 +239,6 @@ export default function ReviewDetailScreen() {
           onPress={() => router.push({ pathname: '/reviews/doctor', params: { doctorName: review.doctorName, hospitalName: review.hospitalName } })}
         >
           <View style={styles.cardTop}>
-            {/* 🟦 의사 아이콘 (Person) */}
             <View style={styles.doctorIconBg}>
                 <Icon name="person" size={30} color="#667eea" />
             </View>
@@ -237,7 +249,6 @@ export default function ReviewDetailScreen() {
             <Icon name="chevron-right" size={24} color="#ccc" />
           </View>
           
-          {/* 🏆 Best Keywords (의사) -> Icon: emoji-events */}
           <View style={styles.bestKeywords}>
             <View style={styles.bestLabelRow}>
                 <Icon name="emoji-events" size={16} color="#FF9800" style={{ marginRight: 4 }} />
@@ -261,7 +272,6 @@ export default function ReviewDetailScreen() {
           onPress={() => router.push({ pathname: '/reviews/hospital', params: { hospitalName: review.hospitalName } })}
         >
           <View style={styles.cardTop}>
-            {/* 🏥 병원 아이콘 (Local Hospital) */}
             <View style={styles.hospitalIconBg}>
                 <Icon name="local-hospital" size={26} color="white" />
             </View>
@@ -272,7 +282,6 @@ export default function ReviewDetailScreen() {
             <Icon name="chevron-right" size={24} color="#ccc" />
           </View>
 
-          {/* 📊 병원 통계 -> Icon: bar-chart */}
           <View style={styles.bestKeywords}>
             <View style={styles.bestLabelRow}>
                 <Icon name="bar-chart" size={16} color="#1976D2" style={{ marginRight: 4 }} />
@@ -330,10 +339,33 @@ const styles = StyleSheet.create({
   iconBtn: { padding: 4 },
   
   imageContainer: { flexDirection: 'row', height: 250, padding: 16, gap: 8 },
-  halfImage: { flex: 1, borderRadius: 12, overflow: 'hidden' },
+  halfImage: { flex: 1, borderRadius: 12, overflow: 'hidden', position: 'relative' },
   img: { width: '100%', height: '100%', backgroundColor: '#eee' },
   label: { position: 'absolute', top: 10, left: 10, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
   labelText: { color: 'white', fontSize: 11, fontWeight: 'bold' },
+  
+  // 🔥 유사도 뱃지 스타일 추가!
+  similarityBadge: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4 },
+      android: { elevation: 4 }
+    })
+  },
+  similarityText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FF6B9D'
+  },
 
   contentContainer: { padding: 20 },
   titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
@@ -370,7 +402,6 @@ const styles = StyleSheet.create({
   profileCard: { padding: 20, borderBottomWidth: 1, borderColor: '#f0f0f0' },
   cardTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   
-  // 아이콘 배경 스타일
   doctorIconBg: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#E8EAF6', justifyContent: 'center', alignItems: 'center' },
   hospitalIconBg: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#FF6B9D', justifyContent: 'center', alignItems: 'center' },
   
